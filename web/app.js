@@ -413,5 +413,12 @@
       else renderLogin();
     });
   }
+  // Android app: the phone's Back button goes back one screen, and leaves the app from Home.
+  if (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.App) {
+    Capacitor.Plugins.App.addListener('backButton', function () {
+      var b = document.querySelector('.hdr button[aria-label="Back"]');
+      if (b) b.click(); else Capacitor.Plugins.App.exitApp();
+    });
+  }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
