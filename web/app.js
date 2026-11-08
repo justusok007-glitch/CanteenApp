@@ -26,6 +26,7 @@
     eyeoff: ['M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z', 'M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z', 'M4 4l16 16'],
     trend: ['M3 17l6-6 4 4 8-8', 'M15 7h6v6'],
     info: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 11v5', 'M12 7.8h.01'],
+    gear: ['M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
     logout: ['M9 4H5v16h4', 'M16 8l4 4-4 4', 'M20 12H9']
   };
   function icon(name) {
@@ -126,7 +127,7 @@
           go: function () { window.Canteen.screens[f](state.me, state.perms); } });
       }
     });
-    tabs.push({ key: 'account', label: 'Account', icon: 'user', go: renderAccount });
+    tabs.push({ key: 'account', label: 'Settings', icon: 'gear', go: renderAccount });
     nav.hidden = false;
     nav.replaceChildren.apply(nav, tabs.map(function (t) {
       var on = t.key === active;
@@ -275,14 +276,47 @@
   // ---------------------------------------------------------------- account
   function renderAccount() {
     var me = state.me;
+    var resetBox = null;
+    if (me.is_admin) {
+      var word = h('input', { type: 'text', autocomplete: 'off', autocapitalize: 'characters', placeholder: 'Type RESET', 'aria-label': 'Type RESET to confirm' });
+      var err = h('div', { class: 'error', role: 'alert', hidden: true });
+      var go = h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async function () {
+        err.setAttribute('hidden', '');
+        if (word.value.trim() !== 'RESET') { err.textContent = 'Type RESET exactly as shown to confirm.'; err.removeAttribute('hidden'); return; }
+        go.disabled = true; go.textContent = 'Erasing\u2026';
+        var r = await sb.rpc('reset_canteen_data', { p_confirm: 'RESET' });
+        if (r.error) {
+          go.disabled = false; go.textContent = 'Erase everything';
+          err.textContent = /does not exist|schema cache/.test(r.error.message)
+            ? 'The reset needs the latest database update (003_reset.sql).' : 'Could not reset: ' + r.error.message;
+          err.removeAttribute('hidden'); return;
+        }
+        try { localStorage.removeItem('canteen.stockdraft'); } catch (e) { /* optional */ }
+        toast('App reset. Ready for a fresh start.');
+        loadHome();
+      } }, 'Erase everything');
+      var confirm = h('div', { class: 'stack', hidden: true, style: 'margin-top:14px' },
+        h('label', { for: 'resetword' }, 'To confirm, type RESET'), word, err, go);
+      word.id = 'resetword';
+      resetBox = h('section', { class: 'sec danger' },
+        h('h2', {}, 'Reset app'),
+        h('p', {}, 'Starting over? This permanently erases all items, prices, suppliers, purchases, stock counts, wastage, cash handovers, expenses and the history log.'),
+        h('p', { class: 'muted', style: 'margin-top:8px' }, 'Kept: your canteen settings, roles and everyone\u2019s login. This cannot be undone.'),
+        h('button', { class: 'btn btn-block', type: 'button', style: 'margin-top:14px', onclick: function () {
+          confirm.removeAttribute('hidden'); word.focus();
+        } }, 'Reset app\u2026'),
+        confirm);
+    }
     show(h('div', {},
-      header('Account'),
-      h('div', { class: 'avatar', 'aria-hidden': 'true' }, (me.full_name || '?').trim().charAt(0).toUpperCase()),
-      h('p', { class: 'display', style: 'font-size:1.3rem;font-weight:700' }, me.full_name),
-      h('p', { class: 'muted' }, me.role_name + ' · ' + me.username),
-      h('div', { class: 'actions', style: 'margin-top:28px' },
-        h('button', { class: 'btn', type: 'button', onclick: async function () { await sb.auth.signOut(); renderLogin(); } },
-          icon('logout'), 'Log out'))), 'account');
+      header('Settings'),
+      h('section', { class: 'sec' },
+        h('div', { class: 'avatar', 'aria-hidden': 'true' }, (me.full_name || '?').trim().charAt(0).toUpperCase()),
+        h('p', { class: 'display', style: 'font-size:1.3rem;font-weight:700' }, me.full_name),
+        h('p', { class: 'muted' }, me.role_name + ' \u00b7 ' + me.username),
+        h('div', { class: 'actions', style: 'margin-top:20px' },
+          h('button', { class: 'btn', type: 'button', onclick: async function () { await sb.auth.signOut(); renderLogin(); } },
+            icon('logout'), 'Log out'))),
+      resetBox), 'account');
   }
 
   // Start only after every script tag has run, so all screens (purchase.js, ...) are registered
