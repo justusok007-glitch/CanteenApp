@@ -53,7 +53,13 @@ jobs:
           cp ../../../android-signing/debug.keystore ~/.android/debug.keystore
 
       - name: Build APK
-        run: cd app/android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+        run: |
+          cd app/android && chmod +x gradlew
+          for i in 1 2 3 4; do
+            ./gradlew assembleDebug --no-daemon && exit 0
+            echo "Build attempt $i failed, retrying"; sleep 15
+          done
+          exit 1
 
       - name: Collect APK
         run: cp app/android/app/build/outputs/apk/debug/app-debug.apk CanteenRecord.apk
