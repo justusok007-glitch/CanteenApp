@@ -71,9 +71,27 @@
 
   var state = { me: null, perms: [] };
 
+  // Screens slide in from the right when you open something and from the left when you go back.
+  // Re-drawing the same screen (switching a segment, saving, changing month) does not animate.
+  var lastTitle = null, backAt = 0;
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button');
+    if (b && (b.getAttribute('aria-label') === 'Back' || /^(back|cancel)/i.test((b.textContent || '').trim()))) backAt = Date.now();
+  }, true);
+  app.addEventListener('animationend', function () { app.classList.remove('slide-fwd', 'slide-back'); });
+
   function show(node, active, opts) {
+    var h1 = node.querySelector && node.querySelector('h1');
+    var title = h1 ? h1.textContent : null;
+    var dir = Date.now() - backAt < 4000 ? 'slide-back' : 'slide-fwd';
+    backAt = 0;
+    var animate = lastTitle !== null && title !== lastTitle;
+    lastTitle = title;
+    var running = app.classList.contains('slide-fwd') ? 'slide-fwd' : app.classList.contains('slide-back') ? 'slide-back' : '';
     app.className = opts && opts.bare ? 'bare' : '';
     app.replaceChildren(node);
+    if (animate) { void app.offsetWidth; app.classList.add(dir); }
+    else if (running) app.classList.add(running);   // the same screen finished loading: let the slide continue
     renderNav(active || 'home');
     window.scrollTo(0, 0);
     app.focus({ preventScroll: true });
