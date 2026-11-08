@@ -104,7 +104,8 @@
   var sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
   window.Canteen = {
     sb: sb, h: h, show: show, toast: toast, icon: icon, header: header, screens: {},
-    goHome: function () { return loadHome(); }
+    goHome: function () { return loadHome(); },
+    openSettings: function () { return renderAccount(); }
   };
 
   function greeting() {
@@ -264,6 +265,7 @@
     show(h('div', {},
       h('div', { class: 'hdr', style: 'align-items:flex-start' },
         h('div', {}, h('p', { class: 'hello' }, greeting() + ','), h('h1', {}, me.full_name))),
+      me.is_admin && window.Canteen.backup ? window.Canteen.backup.banner() : null,
       dash,
       canAddPurchase ? h('div', { class: 'cta' },
         h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: function () { S.purchases(me, perms); } },
@@ -277,6 +279,7 @@
   function renderAccount() {
     var me = state.me;
     var resetBox = null;
+    var backupBox = me.is_admin && window.Canteen.backup ? window.Canteen.backup.section(me) : null;
     if (me.is_admin) {
       var word = h('input', { type: 'text', autocomplete: 'off', autocapitalize: 'characters', placeholder: 'Type RESET', 'aria-label': 'Type RESET to confirm' });
       var err = h('div', { class: 'error', role: 'alert', hidden: true });
@@ -328,6 +331,7 @@
           h('button', { class: 'btn', type: 'button', onclick: async function () { await sb.auth.signOut(); renderLogin(); } },
             icon('logout'), 'Log out'))),
       h('section', { class: 'sec' }, h('h2', {}, 'Password'), npw, pwErr, h('div', { class: 'actions', style: 'margin-top:12px' }, pwBtn)),
+      backupBox,
       resetBox), 'account');
   }
 
