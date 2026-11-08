@@ -273,3 +273,9 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .stk-step:active { background: color-mix(in srgb, var(--ink) 10%, transparent); }
 .stk > .btn-block { margin: 18px 0 24px; }
 .done-box { text-align: center; }
+
+/* ---- settings ---- */
+.btn-danger { background: var(--stamp); border-color: var(--stamp); color: #2A0A07; }
+.btn-danger[disabled] { opacity: .6; }
+.sec.danger { border-color: color-mix(in srgb, var(--stamp) 60%, transparent); }
+.sec.danger h2 { color: var(--stamp); }
