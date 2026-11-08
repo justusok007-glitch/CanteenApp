@@ -340,3 +340,8 @@ html, body { overflow-x: hidden; }
 .slide-back { animation: slide-in-left  .26s cubic-bezier(.22,.8,.3,1); }
 @keyframes slide-in-right { from { transform: translateX(42%); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes slide-in-left  { from { transform: translateX(-42%); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------- offline bar ---------- */
+#offline { position: fixed; top: 0; left: 0; right: 0; z-index: 30; padding: calc(8px + env(safe-area-inset-top)) 14px 8px; text-align: center; font-size: .85rem; font-weight: 600; background: var(--amber); color: #2B2100; }
+#offline[hidden] { display: none; }
+.is-offline main { padding-top: calc(52px + env(safe-area-inset-top)); }
