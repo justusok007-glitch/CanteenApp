@@ -38,7 +38,7 @@
     var date = today();
     var r = await Promise.all([
       sb.from('v_item_status').select('item_id,name,shelf_order,last_counted_on,days_since_count,count_overdue'),
-      sb.from('stock_counts').select('id,counted_on,is_full').order('counted_on', { ascending: false }).limit(6)
+      sb.from('stock_counts').select('id,counted_on,is_full').order('counted_on', { ascending: false }).order('created_at', { ascending: false }).limit(6)
     ]);
     if (r[0].error) { fail('Could not load items: ' + r[0].error.message); return; }
     if (r[1].error) { fail('Could not load earlier counts: ' + r[1].error.message); return; }
@@ -50,25 +50,19 @@
     if (!items.length) { fail('No items yet. Add a purchase first so items exist to count.'); return; }
 
     var counts = r[1].data || [];
-    var existing = counts.filter(function (c) { return c.counted_on === date; })[0] || null;
     var lastQty = {};   // latest earlier count of each item
     if (counts.length) {
       var lr = await sb.from('stock_count_lines').select('count_id,item_id,qty').in('count_id', counts.map(function (c) { return c.id; }));
       if (lr.error) { fail('Could not load earlier counts: ' + lr.error.message); return; }
-      var order = counts.filter(function (c) { return c.counted_on !== date; }).map(function (c) { return c.id; });
+      var order = counts.map(function (c) { return c.id; });   // newest first; today's earlier counts included
       var byCount = {};
       (lr.data || []).forEach(function (l) { (byCount[l.count_id] = byCount[l.count_id] || {})[l.item_id] = Number(l.qty); });
       order.forEach(function (id) {
         Object.keys(byCount[id] || {}).forEach(function (it) { if (!(it in lastQty)) lastQty[it] = byCount[id][it]; });
       });
-      if (existing && byCount[existing.id]) {
-        var today_ = {}; Object.keys(byCount[existing.id]).forEach(function (k) { today_[k] = fmt(byCount[existing.id][k]); });
-        var dr0 = readDraft(date); Object.keys(dr0).forEach(function (k) { today_[k] = dr0[k]; });
-        var vals = today_;
-      }
     }
-    var vals = vals || readDraft(date);
-    var full = existing ? existing.is_full : true;
+    var vals = readDraft(date);
+    var full = true;
     var inputs = {};
 
     function counted() { return items.filter(function (i) { return vals[i.item_id] !== undefined && vals[i.item_id] !== '' && isFinite(num(vals[i.item_id])); }).length; }
@@ -129,7 +123,7 @@
         : 'Count only some items. Cash cannot be checked from a partial count.';
     }
 
-    var saveBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: save }, existing ? 'Update today’s count' : 'Save count');
+    var saveBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: save }, 'Save count');
 
     async function save() {
       err.setAttribute('hidden', '');
@@ -145,29 +139,43 @@
       if (msg) { err.textContent = msg; err.removeAttribute('hidden'); err.scrollIntoView({ block: 'center' }); return; }
 
       saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
-      var id = existing && existing.id;
-      if (id) {
-        var u = await sb.from('stock_counts').update({ is_full: full || existing.is_full }).eq('id', id);
-        if (u.error) return saveFail(u.error);
-      } else {
-        var ins = await sb.from('stock_counts').insert({ is_full: full }).select('id').single();
-        if (ins.error) return saveFail(ins.error);
-        id = ins.data.id;
+      // every save is a new count, so sales appear for each one (even a second count on the same day)
+      var ins = await sb.from('stock_counts').insert({ is_full: full }).select('id').single();
+      if (ins.error) return saveFail(ins.error);
+      var id = ins.data.id;
+      var up = await sb.from('stock_count_lines').insert(
+        entries.map(function (i) { return { count_id: id, item_id: i.item_id, qty: num(vals[i.item_id]) }; }));
+      if (up.error) {
+        await sb.from('stock_counts').delete().eq('id', id);   // never leave an empty count behind
+        return saveFail(up.error);
       }
-      var up = await sb.from('stock_count_lines').upsert(
-        entries.map(function (i) { return { count_id: id, item_id: i.item_id, qty: num(vals[i.item_id]) }; }),
-        { onConflict: 'count_id,item_id' });
-      if (up.error) return saveFail(up.error);
       clearDraft();
+      var canSee = perms.some(function (p) { return p.feature === 'reports' && p.can_view; });
+      var sales = null;
+      if (canSee) {
+        var pr = await sb.from('v_item_periods').select('sales_value,gross_profit').eq('count_id', id);
+        if (!pr.error && pr.data && pr.data.length) {
+          sales = { total: 0, gross: null };
+          pr.data.forEach(function (x) {
+            sales.total += Number(x.sales_value || 0);
+            if (x.gross_profit != null) sales.gross = (sales.gross || 0) + Number(x.gross_profit);
+          });
+        }
+      }
+      function rs(n) { return 'Rs ' + Math.round(n).toLocaleString('en-PK'); }
       show(h('div', {}, C.header('Stock count', C.goHome),
         h('section', { class: 'sec done-box' },
           h('h2', {}, 'Count saved'),
           h('p', {}, entries.length + ' of ' + items.length + ' items counted' + (full ? ' (full count).' : ' (partial count).')),
-          h('p', { class: 'muted' }, 'Today’s sale on the home screen is worked out from this count.')),
+          sales ? h('div', { class: 'verdict good', role: 'status' },
+            h('span', { class: 'verdict-sub' }, 'Sales since the last count' + (full ? '' : ' (items counted)')),
+            h('span', { class: 'verdict-big' }, rs(sales.total)),
+            sales.gross != null ? h('span', { class: 'verdict-sub' }, 'Gross profit ' + rs(sales.gross)) : null)
+          : h('p', { class: 'muted' }, canSee ? 'First count saved. Sales show from your next count.' : 'Count saved.')),
         h('div', { class: 'actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: C.goHome }, 'Back to home'))));
     }
     function saveFail(e) {
-      saveBtn.disabled = false; saveBtn.textContent = existing ? 'Update today’s count' : 'Save count';
+      saveBtn.disabled = false; saveBtn.textContent = 'Save count';
       err.textContent = 'Could not save: ' + e.message + ' Your numbers are kept on this phone; try again.';
       err.removeAttribute('hidden'); err.scrollIntoView({ block: 'center' });
     }
