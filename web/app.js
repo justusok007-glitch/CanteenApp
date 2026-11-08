@@ -256,7 +256,7 @@
       var f = FEATURE[p.feature] || { icon: 'tag', name: p.label };
       return tile('t-' + p.feature, f.icon, f.name, !!S[p.feature], function () { S[p.feature](me, perms); });
     });
-    if (me.can_manage_users) tiles.push(tile('t-users', 'users', 'Users and roles', false));
+    if (me.can_manage_users) tiles.push(tile('t-users', 'users', 'Users and roles', !!S.users, function () { S.users(me, perms); }));
 
     var dash = showStats ? h('section', { class: 'dash', 'aria-label': 'Sales summary' },
       h('div', { class: 'stat hero' }, h('span', { class: 'stat-label' }, "Today's sale"), h('span', { class: 'stat-empty' }, '…'))) : null;
@@ -307,6 +307,17 @@
         } }, 'Reset app\u2026'),
         confirm);
     }
+    var npw = h('input', { id: 'newpw', type: 'password', autocomplete: 'new-password', placeholder: 'New password (8+ characters)', 'aria-label': 'New password' });
+    var pwErr = h('div', { class: 'error', role: 'alert', hidden: true });
+    var pwBtn = h('button', { class: 'btn btn-block', type: 'button', onclick: async function () {
+      pwErr.setAttribute('hidden', '');
+      if (npw.value.length < 8) { pwErr.textContent = 'Password must be at least 8 characters.'; pwErr.removeAttribute('hidden'); return; }
+      pwBtn.disabled = true;
+      var r = await sb.auth.updateUser({ password: npw.value });
+      pwBtn.disabled = false;
+      if (r.error) { pwErr.textContent = 'Could not change the password: ' + r.error.message; pwErr.removeAttribute('hidden'); return; }
+      npw.value = ''; toast('Password changed.');
+    } }, 'Change password');
     show(h('div', {},
       header('Settings'),
       h('section', { class: 'sec' },
@@ -316,6 +327,7 @@
         h('div', { class: 'actions', style: 'margin-top:20px' },
           h('button', { class: 'btn', type: 'button', onclick: async function () { await sb.auth.signOut(); renderLogin(); } },
             icon('logout'), 'Log out'))),
+      h('section', { class: 'sec' }, h('h2', {}, 'Password'), npw, pwErr, h('div', { class: 'actions', style: 'margin-top:12px' }, pwBtn)),
       resetBox), 'account');
   }
 
