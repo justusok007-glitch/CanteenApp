@@ -341,3 +341,9 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .warnbar { width: 100%; text-align: left; margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--sticker); border-radius: 14px; background: rgba(242,183,5,.08); cursor: pointer; font: inherit; }
 .warnbar svg.i { color: var(--sticker); }
 input[type=file] { width: 100%; color: var(--ink-2); }
+
+/* expected stock in the count list */
+.stk-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.stk-add { color: var(--leaf); font-weight: 600; }
+.stk-add.lost { color: var(--stamp); }
+.stk-exp { color: var(--ink); }
