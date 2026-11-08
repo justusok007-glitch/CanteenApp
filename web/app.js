@@ -40,6 +40,9 @@
 
   var sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
 
+  // Shared toolbox for the screen files (purchase.js, ...). Screens register in Canteen.screens[feature].
+  window.Canteen = { sb: sb, h: h, show: show, toast: toast, screens: {}, goHome: function () { return loadHome(); } };
+
   // "ali" -> ali@canteen.local ; a full email is used as typed.
   function toEmail(id) {
     id = id.trim().toLowerCase();
@@ -105,10 +108,14 @@
 
   function renderHome(me, perms) {
     var tiles = perms.filter(function (p) { return p.can_view; }).map(function (p) {
-      return h('button', { class: 'tile', type: 'button', onclick: function () { toast(p.label + ' screen is coming next.'); } },
+      var ready = !!window.Canteen.screens[p.feature];
+      return h('button', { class: 'tile', type: 'button', onclick: function () {
+          var open = window.Canteen.screens[p.feature];
+          if (open) open(me, perms); else toast(p.label + ' screen is coming next.');
+        } },
         h('span', { class: 'icon', 'aria-hidden': 'true' }, ICONS[p.feature] || '•'),
         h('span', {}, p.label),
-        h('span', { class: 'soon' }, 'Coming next'));
+        ready ? null : h('span', { class: 'soon' }, 'Coming next'));
     });
     if (me.can_manage_users) {
       tiles.push(h('button', { class: 'tile', type: 'button', onclick: function () { toast('Users and roles screen is coming next.'); } },
