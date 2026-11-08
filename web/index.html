@@ -3,34 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#050E2B">
+  <meta name="theme-color" content="#08183E">
   <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Canteen">
-  <title>Canteen Manager</title>
+  <meta name="apple-mobile-web-app-title" content="Canteen Record">
+  <title>Canteen Record</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261108d">
+  <link rel="stylesheet" href="style.css?v=20261108e">
 </head>
 <body>
-  <main id="app" tabindex="-1" aria-live="polite"></main>
+  <main id="app" tabindex="-1" aria-live="polite">
+    <div class="splash" role="status" aria-label="Loading Canteen Record">
+      <img src="logo.png" width="148" height="148" alt="Canteen Record">
+      <div class="splash-bar"><i></i></div>
+    </div>
+  </main>
   <nav id="tabs" aria-label="Main" hidden></nav>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-  <script src="config.js?v=20261108d"></script>
-  <script src="app.js?v=20261108d"></script>
-  <script src="purchase.js?v=20261108d"></script>
-  <script src="items.js?v=20261108d"></script>
-  <script src="stock.js?v=20261108d"></script>
-  <script src="cash.js?v=20261108d"></script>
-  <script src="expenses.js?v=20261108d"></script>
-  <script src="suppliers.js?v=20261108d"></script>
-  <script src="reports.js?v=20261108d"></script>
-  <script src="users.js?v=20261108d"></script>
-  <script src="backup.js?v=20261108d"></script>
+  <script src="config.js?v=20261108e"></script>
+  <script src="app.js?v=20261108e"></script>
+  <script src="purchase.js?v=20261108e"></script>
+  <script src="items.js?v=20261108e"></script>
+  <script src="stock.js?v=20261108e"></script>
+  <script src="cash.js?v=20261108e"></script>
+  <script src="expenses.js?v=20261108e"></script>
+  <script src="suppliers.js?v=20261108e"></script>
+  <script src="reports.js?v=20261108e"></script>
+  <script src="users.js?v=20261108e"></script>
+  <script src="backup.js?v=20261108e"></script>
 </body>
 </html>

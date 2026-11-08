@@ -156,10 +156,10 @@
     var form = h('form', { novalidate: true },
       h('div', { class: 'brand' },
         (function () {
-          var img = h('img', { class: 'mark', src: 'icon.svg', alt: '', width: '56', height: '56' });
+          var img = h('img', { class: 'mark', src: 'logo.png', alt: '', width: '88', height: '88' });
           return img;
         })(),
-        h('div', {}, h('h1', {}, 'Canteen Manager'), h('p', { class: 'muted', style: 'margin-top:6px' }, 'Log in to record stock, purchases and cash.'))),
+        h('div', {}, h('h1', {}, 'Canteen Record'), h('p', { class: 'muted', style: 'margin-top:6px' }, 'Log in to record stock, purchases and cash.'))),
       h('label', { for: 'u' }, 'Username or email'), user,
       h('label', { for: 'p' }, 'Password'), h('div', { class: 'pw' }, pass, eye),
       err, btn);

@@ -1,13 +1,13 @@
 {
-  "name": "Canteen Manager",
+  "name": "Canteen Record",
   "short_name": "Canteen",
   "description": "Stock, purchases and cash for the school canteen",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#050E2B",
-  "theme_color": "#050E2B",
+  "background_color": "#08183E",
+  "theme_color": "#08183E",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

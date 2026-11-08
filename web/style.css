@@ -1,45 +1,31 @@
-/* Canteen Manager: khata (ledger) look. Paper-grey page, ink-navy type and navigation,
-   one turmeric "price sticker" colour for the primary action, green and stamp-red only for money meaning. */
+/* Canteen Record: royal blue and white from the logo, on deep navy. Flat surfaces, no glow.
+   Blue is the main action colour; amber is only for warnings; green and red only for money meaning. */
 :root {
-  --paper: #050E2B;      /* page */
-  --surface: #0A1B45;    /* cards, inputs */
+  --paper: #08183E;      /* page */
+  --surface: #0F2A62;    /* cards, inputs */
   --ink: #FFFFFF;        /* text */
-  --ink-2: #A9BDE6;      /* secondary text */
-  --rule: #1F3A78;       /* ledger lines */
-  --sticker: #F2B705;    /* primary action */
-  --sticker-ink: #0F1B2D;
-  --leaf: #36E39A;       /* profit, healthy margin */
+  --ink-2: #B4C7EE;      /* secondary text */
+  --rule: #2A4C93;       /* lines */
+  --sticker: #2468DB;    /* main action fill */
+  --sticker-ink: #FFFFFF;
+  --accent: #82B4FF;     /* links, focus, active tab text */
+  --amber: #F5B400;      /* warnings */
+  --leaf: #3FDB95;       /* profit, healthy margin */
   --stamp: #FF8F85;      /* shortage, errors, pending */
   --stamp-bg: #3A1B2A;
-  --nav-bg: #081633;
-  --nav-ink: #A9BDE6;
-  --glow: #0B4BC4;
+  --nav-bg: #0A1F50;
+  --nav-ink: #B4C7EE;
   color-scheme: dark;
   --radius: 14px;
-  --tile-radius: 20px;
+  --tile-radius: 18px;
   --font-display: "Bricolage Grotesque", "Public Sans", system-ui, sans-serif;
   --font-body: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #0B1220; --surface: #142033; --ink: #EAF0F6; --ink-2: #A3B1C4; --rule: #26344B;
-    --leaf: #4FC98E; --stamp: #FF8F85; --stamp-bg: #3A1B1C;
-    --nav-bg: #0F1A2B; --nav-ink: #A3B1C4; --glow: #1B2A44;
-  }
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0; min-height: 100vh; color: var(--ink); font: 400 1rem/1.5 var(--font-body);
   background: var(--paper);
-}
-body::before {
-  content: ""; position: fixed; inset: 0 0 auto 0; height: 340px; z-index: -1; pointer-events: none;
-  background:
-    radial-gradient(90% 70% at 100% 0%, rgba(30,110,255,.85) 0%, rgba(11,75,196,.45) 38%, transparent 70%),
-    radial-gradient(70% 55% at 85% 12%, rgba(70,150,255,.28) 0%, transparent 65%),
-    linear-gradient(180deg, #061A52 0%, transparent 100%);
-  -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%); mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
 }
 main { max-width: 560px; margin: 0 auto; padding: 20px 16px calc(104px + env(safe-area-inset-bottom)); outline: none; }
 main.bare { padding-bottom: 32px; }
@@ -73,11 +59,8 @@ select {
   appearance: none; -webkit-appearance: none; padding-right: 48px; background-repeat: no-repeat; background-position: right 14px center; background-size: 20px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A9BDE6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
-@media (prefers-color-scheme: dark) {
-  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A3B1C4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); }
-}
 input::placeholder { color: var(--ink-2); opacity: .8; }
-input:focus, select:focus { border-color: var(--ink); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--sticker) 70%, transparent); }
+input:focus, select:focus { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; }
 .row { display: flex; gap: 12px; margin-top: 14px; }
 .row > * { flex: 1; min-width: 0; }
 .hint { color: var(--ink-2); font-size: .875rem; margin-top: 6px; }
@@ -85,19 +68,15 @@ input:focus, select:focus { border-color: var(--ink); outline: none; box-shadow:
 
 /* ---------- buttons ---------- */
 button { font: 600 1rem var(--font-body); color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
-button:focus-visible, a:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
-@media (prefers-color-scheme: dark) { button:focus-visible, a:focus-visible { outline-color: var(--sticker); } }
+button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .btn {
   min-height: 52px; padding: 10px 18px; border-radius: var(--radius);
   background: transparent; border: 1.5px solid var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   transition: background-color .12s, box-shadow .12s;
 }
 .btn:active { background: color-mix(in srgb, var(--ink) 10%, transparent); }
-.btn-primary {
-  background: linear-gradient(180deg, #F8C93A 0%, #F2B705 100%); color: var(--sticker-ink); border-color: transparent;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 10px 22px -10px rgba(242,183,5,.75);
-}
-.btn-primary:active { transform: translateY(1px); box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 4px 10px -6px rgba(242,183,5,.75); }
+.btn-primary { background: var(--sticker); color: var(--sticker-ink); border-color: transparent; }
+.btn-primary:active { background: #1D57BA; transform: translateY(1px); }
 .btn-block { width: 100%; }
 .btn[disabled] { opacity: .55; cursor: progress; }
 .btn-quiet { min-height: 48px; padding: 8px 12px; border: 0; background: transparent; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
@@ -186,9 +165,9 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .tab { flex: 1; max-width: 120px; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   background: none; border: 0; color: var(--nav-ink); font-size: .75rem; font-weight: 600; }
 .tab .pillbg { display: grid; place-items: center; width: 56px; height: 30px; border-radius: 999px; }
-.tab.on { color: var(--sticker); }
-.tab.on .pillbg { background: color-mix(in srgb, var(--sticker) 20%, transparent); color: var(--sticker); }
-.tab:focus-visible { outline-color: var(--sticker); }
+.tab.on { color: #fff; }
+.tab.on .pillbg { background: var(--sticker); color: #fff; }
+.tab:focus-visible { outline-color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } .btn-primary:active { transform: none; } }
 
@@ -196,15 +175,14 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .dash { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 20px; }
 .stat {
   --hue: var(--h-purchases); display: flex; align-items: center; gap: 8px; min-width: 0; padding: 14px 10px; border-radius: var(--tile-radius);
-  border: 1.5px solid color-mix(in srgb, var(--hue) 75%, transparent);
-  background: linear-gradient(150deg, color-mix(in srgb, var(--hue) 22%, var(--surface)) 0%, color-mix(in srgb, var(--hue) 6%, var(--surface)) 100%);
-  box-shadow: 0 0 22px -10px var(--hue), inset 0 1px 0 rgba(255,255,255,.06);
+  border: 1px solid color-mix(in srgb, var(--hue) 50%, transparent);
+  background: color-mix(in srgb, var(--hue) 8%, var(--surface));
 }
 .stat-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .stat-ic svg.i { width: 28px; height: 28px; color: var(--ink); flex: none; }
 .stat.hero { grid-column: 1 / -1; padding: 18px; gap: 18px; }
 .stat.hero .stat-ic { display: grid; place-items: center; flex: none; width: 58px; height: 58px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #3D8BFF, #1654C9); box-shadow: 0 0 18px -4px #3D8BFF; }
+  background: var(--sticker); }
 .stat.hero .stat-ic svg.i { width: 28px; height: 28px; color: #fff; }
 .stat.sales { --hue: var(--h-purchases); }
 .stat.profit { --hue: var(--leaf); }
@@ -221,24 +199,17 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 
 /* ---------- home: glass tiles, one hue each ---------- */
 :root {
-  --h-items: #F2B705; --h-purchases: #3D8BFF; --h-stock_counts: #FF9A3D; --h-cash_handovers: #2CD4C0;
+  --h-items: #F5B400; --h-purchases: #5AA9FF; --h-stock_counts: #FF9A3D; --h-cash_handovers: #2CD4C0;
   --h-expenses: #FF6B6B; --h-suppliers: #9AA7B8; --h-reports: #B7C93A; --h-users: #7C93FF;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --h-items: #F2B705; --h-purchases: #5AA9FF; --h-stock_counts: #FF9A3D; --h-cash_handovers: #2CD4C0;
-    --h-expenses: #FF6B6B; --h-suppliers: #9AA7B8; --h-reports: #B7C93A; --h-users: #7C93FF;
-  }
 }
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tile {
   --hue: var(--ink-2); display: flex; flex-direction: column; justify-content: space-between; gap: 18px; min-height: 120px; padding: 14px;
   text-align: left; border-radius: var(--tile-radius); color: var(--ink);
-  border: 1.5px solid color-mix(in srgb, var(--hue) 70%, transparent);
-  background: linear-gradient(150deg, color-mix(in srgb, var(--hue) 24%, var(--surface)) 0%, color-mix(in srgb, var(--hue) 5%, var(--surface)) 100%);
-  box-shadow: 0 0 22px -12px var(--hue), inset 0 1px 0 rgba(255,255,255,.06);
+  border: 1px solid color-mix(in srgb, var(--hue) 50%, transparent);
+  background: color-mix(in srgb, var(--hue) 8%, var(--surface));
 }
-.tile:active { background: linear-gradient(150deg, color-mix(in srgb, var(--hue) 34%, var(--surface)) 0%, var(--surface) 78%); }
+.tile:active { background: color-mix(in srgb, var(--hue) 22%, var(--surface)); }
 .tile .tile-top, .tile .tile-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tile svg.i { width: 30px; height: 30px; color: var(--hue); }
 .tile .tile-bottom svg.i { width: 22px; height: 22px; color: var(--ink); }
@@ -252,7 +223,7 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 /* ---- stock count ---- */
 .segs { display: flex; gap: 8px; margin-top: 14px; }
 .seg { flex: 1; min-height: 48px; border: 1.5px solid var(--rule); border-radius: var(--radius); background: transparent; color: var(--ink); font: inherit; font-weight: 600; }
-.seg[aria-pressed="true"] { background: var(--sticker); color: var(--sticker-ink); border-color: var(--sticker); }
+.seg[aria-pressed="true"] { background: var(--sticker); color: #fff; border-color: var(--sticker); }
 .stk-note { margin: 8px 0 0; font-size: .92rem; }
 .stk-sticky { position: sticky; top: 0; z-index: 5; margin: 14px -16px 0; padding: 10px 16px 8px; background: var(--paper); border-bottom: 1px solid var(--rule); }
 .stk-sticky input { width: 100%; }
@@ -339,8 +310,8 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .sup-row .badge { margin: 0; white-space: nowrap; }
 
 /* backup */
-.warnbar { width: 100%; text-align: left; margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--sticker); border-radius: 14px; background: rgba(242,183,5,.08); cursor: pointer; font: inherit; }
-.warnbar svg.i { color: var(--sticker); }
+.warnbar { width: 100%; text-align: left; margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--amber); border-radius: 14px; background: rgba(242,183,5,.08); cursor: pointer; font: inherit; }
+.warnbar svg.i { color: var(--amber); }
 input[type=file] { width: 100%; color: var(--ink-2); }
 
 /* expected stock in the count list */
@@ -349,3 +320,11 @@ input[type=file] { width: 100%; color: var(--ink-2); }
 .stk-add.lost { color: var(--stamp); }
 .stk-exp { color: var(--ink); }
 .seg6 { margin-bottom: 14px; }
+
+/* ---------- splash and brand ---------- */
+.splash { min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; }
+.splash img { width: 148px; height: 148px; border-radius: 30px; display: block; }
+.splash-bar { width: 120px; height: 4px; border-radius: 2px; background: var(--rule); overflow: hidden; }
+.splash-bar i { display: block; height: 100%; width: 40%; border-radius: 2px; background: var(--accent); animation: splash-run 1.1s ease-in-out infinite; }
+@keyframes splash-run { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+.brand .mark { width: 88px; height: 88px; border-radius: 20px; }
