@@ -237,9 +237,6 @@
       var loss = Number(d.month_profit) < 0;
       cards.push(stat('profit' + (loss ? ' loss' : ''), 'trend', 'Profit in ' + month, (loss ? '\u2212' : '') + rs(Math.abs(d.month_profit))));
     }
-    cards.push(h('p', { class: 'dash-note' }, icon('info'),
-      h('span', {}, 'Worked out from your stock counts, spread evenly between counts.' +
-      (d.month_profit != null ? ' Profit is after salary, wastage and expenses.' : ''))));
     box.replaceChildren.apply(box, cards);
   }
 
