@@ -257,7 +257,7 @@
 
     show(h('div', {},
       h('div', { class: 'hdr', style: 'align-items:flex-start' },
-        h('div', {}, h('p', { class: 'hello' }, 'Assalamu alaikum,'), h('h1', {}, me.full_name))),
+        h('div', {}, h('p', { class: 'hello salam', lang: 'ar', dir: 'rtl' }, '\u0627\u0644\u0633\u064E\u0651\u0644\u064E\u0627\u0645\u064F \u0639\u064E\u0644\u064E\u064A\u0652\u0643\u064F\u0645\u0652 \u0648\u064E\u0631\u064E\u062D\u0652\u0645\u064E\u0629\u064F \u0627\u0644\u0644\u0647\u0650 \u0648\u064E\u0628\u064E\u0631\u064E\u0643\u064E\u0627\u062A\u064F\u0647\u064F'), h('h1', {}, me.full_name))),
       me.is_admin && window.Canteen.backup ? window.Canteen.backup.banner() : null,
       dash,
       canAddPurchase ? h('div', { class: 'cta' },
