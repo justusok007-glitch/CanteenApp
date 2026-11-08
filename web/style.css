@@ -307,6 +307,7 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 
 /* ---- reports ---- */
 .seg4 { gap: 6px; } .seg4 .seg { padding: 0 4px; font-size: .92rem; }
+.seg6 { gap: 4px; } .seg6 .seg { padding: 0 2px; font-size: .8rem; }
 .monthnav { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 4px; }
 .monthnav .iconbtn.flip svg { transform: rotate(180deg); }
 .bar-row { display: grid; grid-template-columns: 54px 1fr auto; align-items: center; gap: 10px; padding: 7px 0; }
@@ -347,3 +348,4 @@ input[type=file] { width: 100%; color: var(--ink-2); }
 .stk-add { color: var(--leaf); font-weight: 600; }
 .stk-add.lost { color: var(--stamp); }
 .stk-exp { color: var(--ink); }
+.seg6 { margin-bottom: 14px; }
