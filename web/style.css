@@ -332,3 +332,7 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .pgrid-f { font-size: .92rem; padding-right: 6px; }
 .pgrid .chk { justify-self: center; width: 28px; height: 28px; }
 .pgrid .chk::after { content: ""; }
+
+/* ---- items ---- */
+.badge.warn { background: color-mix(in srgb, var(--h-items) 22%, transparent); color: var(--h-items); }
+.sup-row .badge { margin: 0; white-space: nowrap; }
