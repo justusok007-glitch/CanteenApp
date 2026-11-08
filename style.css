@@ -230,3 +230,28 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .t-items { --hue: var(--h-items); } .t-purchases { --hue: var(--h-purchases); } .t-stock_counts { --hue: var(--h-stock_counts); }
 .t-cash_handovers { --hue: var(--h-cash_handovers); } .t-expenses { --hue: var(--h-expenses); } .t-suppliers { --hue: var(--h-suppliers); }
 .t-reports { --hue: var(--h-reports); } .t-users { --hue: var(--h-users); }
+
+/* ---- stock count ---- */
+.segs { display: flex; gap: 8px; margin-top: 14px; }
+.seg { flex: 1; min-height: 48px; border: 1.5px solid var(--rule); border-radius: var(--radius); background: transparent; color: var(--ink); font: inherit; font-weight: 600; }
+.seg[aria-pressed="true"] { background: var(--sticker); color: var(--sticker-ink); border-color: var(--sticker); }
+.stk-note { margin: 8px 0 0; font-size: .92rem; }
+.stk-sticky { position: sticky; top: 0; z-index: 5; margin: 14px -16px 0; padding: 10px 16px 8px; background: var(--paper); border-bottom: 1px solid var(--rule); }
+.stk-sticky input { width: 100%; }
+.stk-progress { margin-top: 8px; font-weight: 600; font-size: .95rem; }
+.stk-bar { height: 6px; margin-top: 6px; border-radius: 3px; background: var(--rule); overflow: hidden; }
+.stk-bar > i { display: block; height: 100%; width: 0; background: var(--leaf); transition: width .2s ease; }
+.stk-list { margin-top: 4px; }
+.stk-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.stk-row[hidden] { display: none; }
+.stk-info { min-width: 0; flex: 1; }
+.stk-name { font-weight: 600; overflow-wrap: anywhere; }
+.stk-meta { font-size: .88rem; color: var(--ink-2); margin-top: 2px; }
+.stk-meta .badge { margin: 0 0 0 8px; padding: 0 8px; }
+.stk-ctl { display: flex; align-items: center; gap: 6px; }
+.stk-ctl input { width: 64px; min-height: 52px; padding: 0 4px; text-align: center; font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stk-row.done .stk-ctl input { border-color: var(--leaf); }
+.stk-step { width: 52px; height: 52px; border-radius: 14px; border: 1.5px solid var(--rule); background: var(--surface); color: var(--ink); font-size: 1.6rem; font-weight: 600; line-height: 1; }
+.stk-step:active { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.stk > .btn-block { margin: 18px 0 24px; }
+.done-box { text-align: center; }
