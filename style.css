@@ -304,3 +304,22 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .sup-bal.owe { color: var(--stamp); } .sup-bal.ok { color: var(--leaf); }
 .sup-row svg.i { width: 20px; height: 20px; color: var(--ink-2); flex: none; }
 .hdr ~ .dash { margin-top: 14px; }
+
+/* ---- reports ---- */
+.seg4 { gap: 6px; } .seg4 .seg { padding: 0 4px; font-size: .92rem; }
+.monthnav { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 4px; }
+.monthnav .iconbtn.flip svg { transform: rotate(180deg); }
+.bar-row { display: grid; grid-template-columns: 54px 1fr auto; align-items: center; gap: 10px; padding: 7px 0; }
+.bar-day { color: var(--ink-2); font-size: .88rem; }
+.bar-track { height: 10px; border-radius: 5px; background: var(--rule); overflow: hidden; }
+.bar-track i { display: block; height: 100%; border-radius: 5px; background: var(--h-purchases); }
+.bar-val { font-size: .92rem; min-width: 84px; text-align: right; }
+.item-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.item-main { display: flex; flex-direction: column; min-width: 0; }
+.item-main .muted { font-size: .88rem; }
+.cash-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.badge.good { background: color-mix(in srgb, var(--leaf) 22%, transparent); color: var(--leaf); }
+.badge.bad { background: var(--stamp-bg); color: var(--stamp); }
+.cash-head .badge { margin: 0; }
+.num.pos { color: var(--leaf); } .num.neg { color: var(--stamp); }
+.stat.wide { grid-column: 1 / -1; }
