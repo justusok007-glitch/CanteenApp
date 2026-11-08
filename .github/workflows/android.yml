@@ -55,8 +55,11 @@ jobs:
       - name: Build APK
         run: |
           cd app/android && chmod +x gradlew
-          # the Gradle download is slow and sometimes times out: smaller package, longer timeout
-          sed -i 's/-all.zip/-bin.zip/; s/networkTimeout=.*/networkTimeout=180000/' gradle/wrapper/gradle-wrapper.properties
+          # fetch Gradle ourselves, patiently: the download host often answers 504 or times out
+          curl -fL --retry 12 --retry-delay 20 --retry-all-errors --connect-timeout 30 --max-time 600 \
+            -o /tmp/gradle-bin.zip https://services.gradle.org/distributions/gradle-8.11.1-bin.zip
+          ls -la /tmp/gradle-bin.zip
+          sed -i 's#^distributionUrl=.*#distributionUrl=file\\:///tmp/gradle-bin.zip#; /^validateDistributionUrl/d' gradle/wrapper/gradle-wrapper.properties
           cat gradle/wrapper/gradle-wrapper.properties
           for i in 1 2 3 4; do
             ./gradlew assembleDebug --no-daemon && exit 0
