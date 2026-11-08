@@ -1,20 +1,20 @@
-/* Canteen Record: royal blue and white from the logo, on deep navy. Flat surfaces, no glow.
-   Blue is the main action colour; amber is only for warnings; green and red only for money meaning. */
+/* Canteen Record: calm slate-navy surfaces, one fresh emerald action colour, amber for warnings.
+   Flat, no glow. Green is the brand action; red and amber keep their meaning. */
 :root {
-  --paper: #08183E;      /* page */
-  --surface: #0F2A62;    /* cards, inputs */
-  --ink: #FFFFFF;        /* text */
-  --ink-2: #B4C7EE;      /* secondary text */
-  --rule: #2A4C93;       /* lines */
-  --sticker: #2468DB;    /* main action fill */
-  --sticker-ink: #FFFFFF;
-  --accent: #82B4FF;     /* links, focus, active tab text */
+  --paper: #0D1420;      /* page */
+  --surface: #162131;    /* cards, inputs */
+  --ink: #F3F7FB;        /* text */
+  --ink-2: #A3B3C8;      /* secondary text */
+  --rule: #2A384D;       /* lines */
+  --sticker: #1FC98A;    /* main action fill */
+  --sticker-ink: #04261B;
+  --accent: #4BE0A8;     /* links, focus, active text */
   --amber: #F5B400;      /* warnings */
-  --leaf: #3FDB95;       /* profit, healthy margin */
+  --leaf: #4BE0A8;       /* profit, healthy margin */
   --stamp: #FF8F85;      /* shortage, errors, pending */
   --stamp-bg: #3A1B2A;
-  --nav-bg: #0A1F50;
-  --nav-ink: #B4C7EE;
+  --nav-bg: #101A29;
+  --nav-ink: #A3B3C8;
   color-scheme: dark;
   --radius: 14px;
   --tile-radius: 18px;
@@ -76,7 +76,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outlin
 }
 .btn:active { background: color-mix(in srgb, var(--ink) 10%, transparent); }
 .btn-primary { background: var(--sticker); color: var(--sticker-ink); border-color: transparent; }
-.btn-primary:active { background: #1D57BA; transform: translateY(1px); }
+.btn-primary:active { background: #19B27A; transform: translateY(1px); }
 .btn-block { width: 100%; }
 .btn[disabled] { opacity: .55; cursor: progress; }
 .btn-quiet { min-height: 48px; padding: 8px 12px; border: 0; background: transparent; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
@@ -165,8 +165,8 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .tab { flex: 1; max-width: 120px; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   background: none; border: 0; color: var(--nav-ink); font-size: .75rem; font-weight: 600; }
 .tab .pillbg { display: grid; place-items: center; width: 56px; height: 30px; border-radius: 999px; }
-.tab.on { color: #fff; }
-.tab.on .pillbg { background: var(--sticker); color: #fff; }
+.tab.on { color: var(--accent); }
+.tab.on .pillbg { background: var(--sticker); color: var(--sticker-ink); }
 .tab:focus-visible { outline-color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } .btn-primary:active { transform: none; } }
@@ -183,7 +183,7 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .stat.hero { grid-column: 1 / -1; padding: 18px; gap: 18px; }
 .stat.hero .stat-ic { display: grid; place-items: center; flex: none; width: 58px; height: 58px; border-radius: 50%;
   background: var(--sticker); }
-.stat.hero .stat-ic svg.i { width: 28px; height: 28px; color: #fff; }
+.stat.hero .stat-ic svg.i { width: 28px; height: 28px; color: var(--sticker-ink); }
 .stat.sales { --hue: var(--h-purchases); }
 .stat.profit { --hue: var(--leaf); }
 .stat.profit.loss { --hue: var(--stamp); }
@@ -199,8 +199,8 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 
 /* ---------- home: glass tiles, one hue each ---------- */
 :root {
-  --h-items: #F5B400; --h-purchases: #5AA9FF; --h-stock_counts: #FF9A3D; --h-cash_handovers: #2CD4C0;
-  --h-expenses: #FF6B6B; --h-suppliers: #9AA7B8; --h-reports: #B7C93A; --h-users: #7C93FF;
+  --h-items: #F5B400; --h-purchases: #60A5FA; --h-stock_counts: #FB923C; --h-cash_handovers: #2DD4BF;
+  --h-expenses: #F87171; --h-suppliers: #94A3B8; --h-reports: #A3E635; --h-users: #A78BFA;
 }
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tile {
@@ -223,7 +223,7 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 /* ---- stock count ---- */
 .segs { display: flex; gap: 8px; margin-top: 14px; }
 .seg { flex: 1; min-height: 48px; border: 1.5px solid var(--rule); border-radius: var(--radius); background: transparent; color: var(--ink); font: inherit; font-weight: 600; }
-.seg[aria-pressed="true"] { background: var(--sticker); color: #fff; border-color: var(--sticker); }
+.seg[aria-pressed="true"] { background: var(--sticker); color: var(--sticker-ink); border-color: var(--sticker); }
 .stk-note { margin: 8px 0 0; font-size: .92rem; }
 .stk-sticky { position: sticky; top: 0; z-index: 5; margin: 14px -16px 0; padding: 10px 16px 8px; background: var(--paper); border-bottom: 1px solid var(--rule); }
 .stk-sticky input { width: 100%; }
