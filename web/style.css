@@ -295,3 +295,12 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .stat + .sec, .segs + .stat { margin-top: 14px; }
 .segs + p, .segs + .stat { margin-top: 14px; }
 .segs ~ .sec:first-of-type { padding-top: 18px; }
+
+/* ---- suppliers ---- */
+.sup-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 64px; padding: 12px 0; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--rule); color: var(--ink); }
+.sup-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sup-main .muted { font-size: .88rem; font-weight: 400; }
+.sup-bal { font: 700 1.05rem var(--font-display); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sup-bal.owe { color: var(--stamp); } .sup-bal.ok { color: var(--leaf); }
+.sup-row svg.i { width: 20px; height: 20px; color: var(--ink-2); flex: none; }
+.hdr ~ .dash { margin-top: 14px; }
