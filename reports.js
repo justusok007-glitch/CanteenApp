@@ -22,11 +22,11 @@
     var label = month.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
     function go(t, m) { C.screens.reports(me, perms, t, m || month); }
 
-    var tabs = [['month', 'Month'], ['items', 'Items'], ['cash', 'Cash'], ['alerts', 'Alerts']];
-    var segs = h('div', { class: 'segs seg4', role: 'group', 'aria-label': 'Report' }, tabs.map(function (t) {
+    var tabs = [['month', 'Month'], ['items', 'Items'], ['stock', 'Stock'], ['buying', 'Buying'], ['cash', 'Cash'], ['alerts', 'Alerts']];
+    var segs = h('div', { class: 'segs seg6', role: 'group', 'aria-label': 'Report' }, tabs.map(function (t) {
       return h('button', { type: 'button', class: 'seg', 'aria-pressed': String(tab === t[0]), onclick: function () { go(t[0]); } }, t[1]);
     }));
-    var nav = (tab === 'month' || tab === 'items') ? h('div', { class: 'monthnav' },
+    var nav = (tab === 'month' || tab === 'items' || tab === 'buying') ? h('div', { class: 'monthnav' },
       h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Previous month', onclick: function () { go(tab, new Date(month.getFullYear(), month.getMonth() - 1, 1)); } }, icon('back')),
       h('b', {}, label),
       h('button', { class: 'iconbtn flip', type: 'button', 'aria-label': 'Next month', onclick: function () { go(tab, new Date(month.getFullYear(), month.getMonth() + 1, 1)); } }, icon('back'))) : null;
@@ -97,6 +97,101 @@
               h('b', { class: 'num' }, rs(x.sales)));
           }) : h('p', { class: 'muted' }, 'No item sales in this month yet.')),
           note('Items are grouped by the date of the count that closed each period.')));
+      }, failure);
+    }
+
+
+    // ---------------------------------------------------------------- stock value
+    // Stock on the shelf now = last count + purchases since - wastage since (same rule as the count screen).
+    if (tab === 'stock') {
+      (async function () {
+        var r = await Promise.all([
+          sb.from('v_item_status').select('item_id,name,sell_price,avg_cost,last_counted_on'),
+          sb.from('stock_counts').select('id,counted_on,created_at').order('counted_on', { ascending: false }).order('created_at', { ascending: false }).limit(40)
+        ]);
+        if (r[0].error) return failure(r[0].error);
+        if (r[1].error) return failure(r[1].error);
+        var st = r[0].data || [], counts = r[1].data || [];
+        function dayOf(ts) { return iso(new Date(ts)); }
+        function countPos(c) { return dayOf(c.created_at) === c.counted_on ? new Date(c.created_at).getTime() : new Date(c.counted_on + 'T23:59:59').getTime(); }
+        function entryPos(d, created) { return dayOf(created) === d ? new Date(created).getTime() : new Date(d + 'T00:00:00').getTime(); }
+        var lastQty = {}, lastAt = {};
+        if (counts.length) {
+          var lr = await sb.from('stock_count_lines').select('count_id,item_id,qty').in('count_id', counts.map(function (c) { return c.id; }));
+          if (lr.error) return failure(lr.error);
+          var by = {}; (lr.data || []).forEach(function (l) { (by[l.count_id] = by[l.count_id] || {})[l.item_id] = Number(l.qty); });
+          counts.forEach(function (c) { Object.keys(by[c.id] || {}).forEach(function (k) { if (!(k in lastQty)) { lastQty[k] = by[c.id][k]; lastAt[k] = countPos(c); } }); });
+        }
+        var qty = {}, keys = Object.keys(lastAt);
+        keys.forEach(function (k) { qty[k] = lastQty[k]; });
+        if (keys.length) {
+          var sd = iso(new Date(Math.min.apply(null, keys.map(function (k) { return lastAt[k]; })) - 86400000 * 2));
+          var er = await Promise.all([
+            sb.from('purchase_bills').select('id,bill_date,created_at').gte('bill_date', sd),
+            sb.from('wastage').select('item_id,qty,wasted_on,created_at').gte('wasted_on', sd)]);
+          var bills = {}; (er[0].data || []).forEach(function (b) { bills[b.id] = entryPos(b.bill_date, b.created_at); });
+          var ids = Object.keys(bills);
+          var pl = ids.length ? await sb.from('purchase_lines').select('item_id,bill_id,total_pieces').in('bill_id', ids) : { data: [] };
+          (pl.data || []).forEach(function (l) { if (lastAt[l.item_id] != null && bills[l.bill_id] > lastAt[l.item_id]) qty[l.item_id] += Number(l.total_pieces); });
+          (er[1].data || []).forEach(function (w) { if (lastAt[w.item_id] != null && entryPos(w.wasted_on, w.created_at) > lastAt[w.item_id]) qty[w.item_id] -= Number(w.qty); });
+        }
+        var rows = [], uncounted = [], noPrice = 0, noCost = 0, seeCost = false;
+        st.forEach(function (x) {
+          if (qty[x.item_id] == null) { uncounted.push(x.name); return; }
+          var q = Math.max(0, qty[x.item_id]);
+          var sell = x.sell_price != null ? q * Number(x.sell_price) : null;
+          var cost = x.avg_cost != null ? q * Number(x.avg_cost) : null;
+          if (x.avg_cost != null) seeCost = true;
+          if (sell == null) noPrice++; if (cost == null) noCost++;
+          rows.push({ name: x.name, q: q, sell: sell, cost: cost });
+        });
+        rows.sort(function (a, b) { return (b.sell || 0) - (a.sell || 0); });
+        var tSell = sum(rows, function (x) { return x.sell; }), tCost = sum(rows, function (x) { return x.cost; });
+        var line = function (k, v, cls) { return h('div', { class: 'r-line' }, h('span', {}, k), h('b', { class: 'num ' + (cls || '') }, v)); };
+        put(h('div', {},
+          h('section', { class: 'sec' }, h('h2', {}, 'Stock on the shelf now'),
+            line('Worth at selling price', rs(tSell)),
+            seeCost ? line('Worth at cost price', rs(tCost)) : null,
+            seeCost ? line('Profit if all sold', rs(tSell - tCost), 'pos') : null,
+            h('p', { class: 'hint' }, 'Last count plus purchases and minus wastage since. It is only as fresh as your last count.')),
+          h('section', { class: 'sec' }, h('h2', {}, 'By item'),
+            rows.length ? rows.map(function (x) {
+              return h('div', { class: 'item-row' },
+                h('span', { class: 'item-main' }, h('b', {}, x.name), h('span', { class: 'muted' }, (Math.round(x.q * 100) / 100) + ' in stock')),
+                h('span', { class: 'item-main', style: 'text-align:right' },
+                  h('b', { class: 'num' }, x.sell != null ? rs(x.sell) : 'no price'),
+                  seeCost ? h('span', { class: 'muted' }, 'cost ' + (x.cost != null ? rs(x.cost) : 'unknown')) : null));
+            }) : h('p', { class: 'muted' }, 'Count your stock first. Values appear after the first stock count.'),
+            (noPrice || noCost) ? h('p', { class: 'hint' }, [noPrice ? noPrice + ' without a selling price' : '', noCost ? noCost + ' without a cost' : ''].filter(Boolean).join(', ') + ' are left out of those totals.') : null,
+            uncounted.length ? h('p', { class: 'hint' }, 'Not counted yet: ' + uncounted.join(', ') + '.') : null)));
+      })().catch(failure);
+    }
+
+    // ---------------------------------------------------------------- buying (purchases paid and left)
+    if (tab === 'buying') {
+      Promise.all([
+        sb.from('purchase_bills').select('id,supplier_id,bill_date,total_amount,amount_paid,pending_amount').gte('bill_date', m0).lte('bill_date', m1),
+        sb.from('v_supplier_balances').select('supplier_id,name,total_bought,total_paid,balance_owed')
+      ]).then(function (r) {
+        if (r[0].error) return failure(r[0].error);
+        var bills = r[0].data || [], sup = r[1].error ? null : (r[1].data || []);
+        var bought = sum(bills, function (b) { return b.total_amount; });
+        var paid = sum(bills, function (b) { return b.amount_paid; });
+        var line = function (k, v, cls) { return h('div', { class: 'r-line' }, h('span', {}, k), h('b', { class: 'num ' + (cls || '') }, v)); };
+        var owing = sup ? sup.filter(function (x) { return Number(x.balance_owed) > 0.5; }).sort(function (a, b) { return b.balance_owed - a.balance_owed; }) : [];
+        put(h('div', {},
+          h('section', { class: 'sec' }, h('h2', {}, 'Bought in ' + label),
+            line('Purchases (' + bills.length + ' bills)', rs(bought)),
+            line('Paid on these bills', rs(paid)),
+            line('Left to pay on these bills', rs(bought - paid), bought - paid > 0.5 ? 'neg' : '')),
+          sup ? h('section', { class: 'sec' }, h('h2', {}, 'Owed to suppliers now'),
+            line('All purchases ever', rs(sum(sup, function (x) { return x.total_bought; }))),
+            line('Paid so far', rs(sum(sup, function (x) { return x.total_paid; }))),
+            line('Left to pay', rs(sum(sup, function (x) { return x.balance_owed; })), sum(sup, function (x) { return x.balance_owed; }) > 0.5 ? 'neg' : ''),
+            owing.length ? h('div', { style: 'margin-top:8px' }, owing.map(function (x) {
+              return h('div', { class: 'item-row' }, h('b', {}, x.name), h('b', { class: 'num neg' }, rs(x.balance_owed)));
+            })) : h('p', { class: 'muted', style: 'margin-top:8px' }, 'Nothing owed to any supplier.'),
+            h('p', { class: 'hint' }, 'Includes payments recorded on the Suppliers screen.')) : null));
       }, failure);
     }
 
