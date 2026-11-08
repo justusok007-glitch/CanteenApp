@@ -119,7 +119,52 @@
     return;
   }
 
-  var sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+  // ---------------------------------------------------------------- offline reading
+  // Every successful read is kept on the phone. With no signal the last copy is shown instead,
+  // and anything that would change data says it needs internet. Cleared when you log out.
+  var DATA_CACHE = 'canteen-data-v1';
+  var offlineBar = h('div', { id: 'offline', role: 'status', hidden: true },
+    'Offline. Showing the last saved data. Saving needs internet.');
+  document.body.appendChild(offlineBar);
+  function setOffline(v) { offlineBar.hidden = !v; document.documentElement.classList.toggle('is-offline', !!v); }
+  window.addEventListener('offline', function () { setOffline(true); });
+  window.addEventListener('online', function () { setOffline(false); });
+  if (navigator.onLine === false) setOffline(true);
+
+  function cacheKey(input, init) {
+    var url = typeof input === 'string' ? input : input.url;
+    var hd = new Headers((init && init.headers) || (typeof input !== 'string' && input.headers) || {});
+    return url + (url.indexOf('?') > -1 ? '&' : '?') + '__a=' + encodeURIComponent((hd.get('Accept') || '') + '|' + (hd.get('Prefer') || ''));
+  }
+  async function dataFetch(input, init) {
+    var url = typeof input === 'string' ? input : input.url;
+    var method = ((init && init.method) || (typeof input !== 'string' && input.method) || 'GET').toUpperCase();
+    var isRest = url.indexOf('/rest/v1/') > -1;
+    try {
+      var res = await fetch(input, init);
+      if (isRest) {
+        setOffline(false);
+        if (method === 'GET' && res.ok && window.caches) {
+          try { var c = await caches.open(DATA_CACHE); await c.put(cacheKey(input, init), res.clone()); } catch (e) { /* cache is optional */ }
+        }
+      }
+      return res;
+    } catch (e) {
+      if (!isRest) throw e;
+      setOffline(true);
+      if (method === 'GET' && window.caches) {
+        var hit = await caches.match(cacheKey(input, init), { cacheName: DATA_CACHE });
+        if (hit) return hit;
+      }
+      if (method !== 'GET') {
+        return new Response(JSON.stringify({ message: 'You are offline. Connect to the internet and try again.' }),
+          { status: 503, headers: { 'Content-Type': 'application/json' } });
+      }
+      throw e;
+    }
+  }
+
+  var sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { global: { fetch: dataFetch } });
   window.Canteen = {
     sb: sb, h: h, show: show, toast: toast, icon: icon, header: header, screens: {},
     goHome: function () { return loadHome(); },
@@ -206,6 +251,12 @@
       sb.from('v_my_permissions').select('*')
     ]);
     var me = r[0].data, perms = r[1].data || [];
+    if (r[0].error && (navigator.onLine === false || /fetch|network|load failed/i.test(r[0].error.message || ''))) {
+      show(h('div', {}, h('div', { class: 'hdr' }, h('h1', {}, 'Canteen Record')),
+        h('p', { class: 'muted' }, 'You are offline and there is no saved data on this phone yet. Connect to the internet once to load the app.'),
+        h('div', { class: 'actions' }, h('button', { class: 'btn btn-primary', type: 'button', onclick: loadHome }, 'Try again'))), 'home', { bare: true });
+      return;
+    }
     if (r[0].error || !me) {
       await sb.auth.signOut();
       renderLogin('This account is disabled or not set up yet. Ask the admin.');
@@ -348,9 +399,19 @@
 
   // Start only after every script tag has run, so all screens (purchase.js, ...) are registered
   // before the home screen decides which buttons and tabs to show.
+  function hasStoredLogin() {
+    try { for (var i = 0; i < localStorage.length; i++) if (/^sb-.*-auth-token$/.test(localStorage.key(i))) return true; } catch (e) { /* none */ }
+    return false;
+  }
   function boot() {
-    sb.auth.onAuthStateChange(function (event) { if (event === 'SIGNED_OUT' && state.me) renderLogin(); });
-    sb.auth.getSession().then(function (r) { if (r.data && r.data.session) loadHome(); else renderLogin(); });
+    sb.auth.onAuthStateChange(function (event) {
+      if (event === 'SIGNED_OUT') { if (window.caches) caches.delete(DATA_CACHE); if (state.me) renderLogin(); }
+    });
+    sb.auth.getSession().then(function (r) {
+      if (r.data && r.data.session) loadHome();
+      else if (navigator.onLine === false && hasStoredLogin()) loadHome();   // offline with an expired token: still show saved data
+      else renderLogin();
+    });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
