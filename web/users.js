@@ -11,14 +11,19 @@
   function show(node) { C.show(node, 'users'); }
   function niceDate(s) { return s ? new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'never'; }
 
-  // Calls the Edge Function and turns every failure into a readable message.
+  // Calls the Edge Function and turns every failure into a message that says what really went wrong.
   async function service(body) {
     var r = await sb.functions.invoke('manage-users', { body: body });
     if (!r.error) return { ok: true };
-    var msg = '';
-    try { if (r.error.context && r.error.context.json) msg = (await r.error.context.json()).error || ''; } catch (e) { /* not JSON */ }
-    if (!msg) msg = 'The user service is not set up yet. Deploy the manage-users function in Supabase first.';
-    return { ok: false, message: msg };
+    var res = r.error.context, status = res && res.status, text = '';
+    if (!status) return { ok: false, message: 'Could not reach the manage-users function (' + (r.error.message || 'network problem') + '). Check your internet and that the function is deployed.' };
+    try { text = await res.text(); } catch (e) { /* no body */ }
+    var info = null; try { info = JSON.parse(text); } catch (e) { /* not JSON */ }
+    var said = info && (info.error || info.message) ? String(info.error || info.message) : text;
+    if (info && info.error) return { ok: false, message: said };               // our own, already readable
+    if (status === 404) return { ok: false, message: 'Supabase says the function was not found (404). In Edge Functions it must be named exactly manage-users.' };
+    if (status === 401) return { ok: false, message: 'Supabase rejected your login token (401: ' + said + '). Open the manage-users function settings and turn "Verify JWT" off, then deploy again.' };
+    return { ok: false, message: 'The manage-users function failed (' + status + '): ' + (said || 'no details') + '. Open its Logs in Supabase for the reason.' };
   }
 
   C.screens.users = async function (me, perms, view, id) {
