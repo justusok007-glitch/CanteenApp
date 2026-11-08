@@ -198,28 +198,72 @@
   }
 
   // ---------------------------------------------------------------- home
+  function niceDate(iso) {
+    var p = String(iso).split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  }
+  function rs(n) { return 'Rs ' + Math.round(n).toLocaleString('en-PK'); }
+
+  // Sales summary. Sales are worked out from stock counts (never typed in), so today's figure
+  // appears once a count closes today, and sales between counts are spread evenly over the days.
+  async function fillDashboard(box) {
+    var r = await sb.from('v_dashboard').select('*').maybeSingle();
+    if (r.error) {
+      box.replaceChildren(h('p', { class: 'dash-note' }, 'The sales summary needs the latest database update.'));
+      return;
+    }
+    var d = r.data;
+    if (!d) { box.replaceChildren(); return; }
+    var month = new Date().toLocaleDateString('en-GB', { month: 'long' });
+    var cards = [
+      h('div', { class: 'stat hero' },
+        h('span', { class: 'stat-label' }, "Today's sale"),
+        d.today_sales == null ? h('span', { class: 'stat-empty' }, 'Not counted yet')
+                              : h('span', { class: 'stat-num' }, rs(d.today_sales)),
+        h('span', { class: 'stat-sub' }, d.as_of ? 'Last stock count: ' + niceDate(d.as_of) : 'Do your first stock count to see sales here.')),
+      h('div', { class: 'stat sales' },
+        h('span', { class: 'stat-label' }, 'Sales in ' + month), h('span', { class: 'stat-num' }, rs(d.month_sales)))
+    ];
+    if (d.month_profit != null) {
+      var loss = Number(d.month_profit) < 0;
+      cards.push(h('div', { class: 'stat profit' + (loss ? ' loss' : '') },
+        h('span', { class: 'stat-label' }, 'Profit in ' + month),
+        h('span', { class: 'stat-num' }, (loss ? '−' : '') + rs(Math.abs(d.month_profit)))));
+    }
+    cards.push(h('p', { class: 'dash-note' }, 'Worked out from your stock counts, spread evenly between counts.' +
+      (d.month_profit != null ? ' Profit is after salary, wastage and expenses.' : '')));
+    box.replaceChildren.apply(box, cards);
+  }
+
   function renderHome() {
     var me = state.me, perms = state.perms, S = window.Canteen.screens;
     var canAddPurchase = perms.some(function (p) { return p.feature === 'purchases' && p.can_add; }) && S.purchases;
-    var rows = perms.filter(function (p) { return p.can_view; }).map(function (p) {
-      var ready = !!S[p.feature], f = FEATURE[p.feature] || { icon: 'tag', name: p.label };
-      return h('button', { class: 'item', type: 'button', 'aria-disabled': ready ? null : 'true',
-        onclick: ready ? function () { S[p.feature](me, perms); } : null },
-        icon(f.icon), h('span', { class: 'grow' }, f.name),
-        ready ? icon('chevron') : h('span', { class: 'pill' }, 'Soon'));
-    });
-    if (me.can_manage_users) {
-      rows.push(h('button', { class: 'item', type: 'button', 'aria-disabled': 'true' },
-        icon('users'), h('span', { class: 'grow' }, 'Users and roles'), h('span', { class: 'pill' }, 'Soon')));
+    var showStats = perms.some(function (p) { return p.feature === 'reports' && p.can_view; });
+
+    function tile(cls, iconName, name, ready, open) {
+      return h('button', { class: 'tile ' + cls, type: 'button', 'aria-disabled': ready ? null : 'true', onclick: ready ? open : null },
+        h('span', { class: 'tile-top' }, icon(iconName), ready ? null : h('span', { class: 'pill' }, 'Soon')),
+        h('span', { class: 'tile-bottom' }, h('span', { class: 'tile-name' }, name), ready ? icon('chevron') : null));
     }
+    var tiles = perms.filter(function (p) { return p.can_view; }).map(function (p) {
+      var f = FEATURE[p.feature] || { icon: 'tag', name: p.label };
+      return tile('t-' + p.feature, f.icon, f.name, !!S[p.feature], function () { S[p.feature](me, perms); });
+    });
+    if (me.can_manage_users) tiles.push(tile('t-users', 'users', 'Users and roles', false));
+
+    var dash = showStats ? h('section', { class: 'dash', 'aria-label': 'Sales summary' },
+      h('div', { class: 'stat hero' }, h('span', { class: 'stat-label' }, "Today's sale"), h('span', { class: 'stat-empty' }, '…'))) : null;
+
     show(h('div', {},
       h('div', { class: 'hdr', style: 'align-items:flex-start' },
-        h('div', {}, h('p', { class: 'hello' }, greeting()), h('h1', {}, me.full_name))),
+        h('div', {}, h('p', { class: 'hello' }, greeting() + ','), h('h1', {}, me.full_name))),
+      dash,
       canAddPurchase ? h('div', { class: 'cta' },
         h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: function () { S.purchases(me, perms); } },
           icon('plus'), 'New purchase')) : null,
-      rows.length ? h('div', { class: 'list' }, rows)
-                  : h('p', { class: 'muted' }, 'Your role has no screens yet. Ask the admin to give you access.')), 'home');
+      tiles.length ? h('div', { class: 'tiles' }, tiles)
+                   : h('p', { class: 'muted' }, 'Your role has no screens yet. Ask the admin to give you access.')), 'home');
+    if (dash) fillDashboard(dash);
   }
 
   // ---------------------------------------------------------------- account
@@ -235,6 +279,11 @@
           icon('logout'), 'Log out'))), 'account');
   }
 
-  sb.auth.onAuthStateChange(function (event) { if (event === 'SIGNED_OUT' && state.me) renderLogin(); });
-  sb.auth.getSession().then(function (r) { if (r.data && r.data.session) loadHome(); else renderLogin(); });
+  // Start only after every script tag has run, so all screens (purchase.js, ...) are registered
+  // before the home screen decides which buttons and tabs to show.
+  function boot() {
+    sb.auth.onAuthStateChange(function (event) { if (event === 'SIGNED_OUT' && state.me) renderLogin(); });
+    sb.auth.getSession().then(function (r) { if (r.data && r.data.session) loadHome(); else renderLogin(); });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
