@@ -143,7 +143,7 @@
         h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async function () {
           rerr.setAttribute('hidden', '');
           if (!rn.value.trim()) return say(rerr, 'Enter the role name.');
-          var res = await sb.from('roles').insert({ name: rn.value.trim() }).select('id').single();
+          var res = await sb.from('roles').insert({ canteen_id: me.canteen_id, name: rn.value.trim() }).select('id').single();
           if (res.error) return say(rerr, res.error.code === '23505' ? 'A role with this name already exists.' : 'Could not save: ' + res.error.message);
           go('role', res.data.id);
         } }, 'Create role'));
