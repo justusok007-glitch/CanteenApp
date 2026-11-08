@@ -323,3 +323,12 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .cash-head .badge { margin: 0; }
 .num.pos { color: var(--leaf); } .num.neg { color: var(--stamp); }
 .stat.wide { grid-column: 1 / -1; }
+
+/* ---- users and roles ---- */
+.chk { appearance: auto; -webkit-appearance: checkbox; width: 26px; height: 26px; min-height: 0; padding: 0; margin: 0; accent-color: var(--sticker); flex: none; }
+.chk-row { display: flex; align-items: center; gap: 12px; min-height: 48px; margin: 0; font-weight: 500; }
+.pgrid { display: grid; grid-template-columns: 1fr repeat(4, 44px); align-items: center; row-gap: 4px; margin-top: 8px; }
+.pgrid-h { text-align: center; font-size: .78rem; color: var(--ink-2); font-weight: 600; }
+.pgrid-f { font-size: .92rem; padding-right: 6px; }
+.pgrid .chk { justify-self: center; width: 28px; height: 28px; }
+.pgrid .chk::after { content: ""; }
