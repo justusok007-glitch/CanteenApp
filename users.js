@@ -6,6 +6,7 @@
   var C = window.Canteen;
   if (!C) return;
   var h = C.h, sb = C.sb, icon = C.icon;
+  var FN_NAMES = ['manage-users', 'manage-user'];
   var ACTIONS = [['can_view', 'View'], ['can_add', 'Add'], ['can_edit', 'Edit'], ['can_delete', 'Delete']];
 
   function show(node) { C.show(node, 'users'); }
@@ -13,15 +14,21 @@
 
   // Calls the Edge Function and turns every failure into a message that says what really went wrong.
   async function service(body) {
-    var r = await sb.functions.invoke('manage-users', { body: body });
+    // The function may have been deployed as manage-users or manage-user; use whichever answers.
+    var r;
+    for (var k = 0; k < FN_NAMES.length; k++) {
+      r = await sb.functions.invoke(FN_NAMES[k], { body: body });
+      var st = r.error && r.error.context && r.error.context.status;
+      if (!r.error || (st && st !== 404)) break;
+    }
     if (!r.error) return { ok: true };
     var res = r.error.context, status = res && res.status, text = '';
-    if (!status) return { ok: false, message: 'Could not reach the manage-users function (' + (r.error.message || 'network problem') + '). Check your internet and that the function is deployed.' };
+    if (!status) return { ok: false, message: 'Could not reach the manage-users function (' + (r.error.message || 'network problem') + '). Usual causes: the function name is not manage-users or manage-user, or "Verify JWT" is still on for it (turn it off and save).' };
     try { text = await res.text(); } catch (e) { /* no body */ }
     var info = null; try { info = JSON.parse(text); } catch (e) { /* not JSON */ }
     var said = info && (info.error || info.message) ? String(info.error || info.message) : text;
     if (info && info.error) return { ok: false, message: said };               // our own, already readable
-    if (status === 404) return { ok: false, message: 'Supabase says the function was not found (404). In Edge Functions it must be named exactly manage-users.' };
+    if (status === 404) return { ok: false, message: 'Supabase says the function was not found (404). It must be named manage-users or manage-user.' };
     if (status === 401) return { ok: false, message: 'Supabase rejected your login token (401: ' + said + '). Open the manage-users function settings and turn "Verify JWT" off, then deploy again.' };
     return { ok: false, message: 'The manage-users function failed (' + status + '): ' + (said || 'no details') + '. Open its Logs in Supabase for the reason.' };
   }
