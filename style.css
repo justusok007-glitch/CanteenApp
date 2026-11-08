@@ -288,3 +288,10 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .verdict.good .verdict-big { color: var(--leaf); } .verdict.bad .verdict-big { color: var(--stamp); }
 .verdict-sub { color: var(--ink-2); font-size: .92rem; }
 .r-line { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+
+/* ---- expenses and wastage ---- */
+.row-end { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.row-end .iconbtn { width: 44px; height: 44px; }
+.stat + .sec, .segs + .stat { margin-top: 14px; }
+.segs + p, .segs + .stat { margin-top: 14px; }
+.segs ~ .sec:first-of-type { padding-top: 18px; }
