@@ -279,3 +279,12 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 .btn-danger[disabled] { opacity: .6; }
 .sec.danger { border-color: color-mix(in srgb, var(--stamp) 60%, transparent); }
 .sec.danger h2 { color: var(--stamp); }
+
+/* ---- cash check ---- */
+.verdict { display: flex; flex-direction: column; gap: 2px; margin: 12px 0 6px; padding: 14px 16px; border-radius: var(--radius); border: 1.5px solid; }
+.verdict.good { border-color: var(--leaf); background: color-mix(in srgb, var(--leaf) 12%, transparent); }
+.verdict.bad { border-color: var(--stamp); background: var(--stamp-bg); }
+.verdict-big { font: 700 1.5rem/1.2 var(--font-display); }
+.verdict.good .verdict-big { color: var(--leaf); } .verdict.bad .verdict-big { color: var(--stamp); }
+.verdict-sub { color: var(--ink-2); font-size: .92rem; }
+.r-line { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
