@@ -24,6 +24,8 @@
     trash: ['M4 7h16', 'M9 7V4h6v3', 'M6 7l1 13h10l1-13', 'M10 11v6', 'M14 11v6'],
     eye: ['M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z', 'M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z'],
     eyeoff: ['M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z', 'M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z', 'M4 4l16 16'],
+    trend: ['M3 17l6-6 4 4 8-8', 'M15 7h6v6'],
+    info: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 11v5', 'M12 7.8h.01'],
     logout: ['M9 4H5v16h4', 'M16 8l4 4-4 4', 'M20 12H9']
   };
   function icon(name) {
@@ -215,23 +217,27 @@
     var d = r.data;
     if (!d) { box.replaceChildren(); return; }
     var month = new Date().toLocaleDateString('en-GB', { month: 'long' });
+    function stat(cls, ic, label, value, sub, emptyVal) {
+      return h('div', { class: 'stat ' + cls },
+        h('span', { class: 'stat-ic' }, icon(ic)),
+        h('span', { class: 'stat-body' },
+          h('span', { class: 'stat-label' }, label),
+          h('span', { class: emptyVal ? 'stat-empty' : 'stat-num' }, value),
+          sub ? h('span', { class: 'stat-sub' }, sub) : null));
+    }
     var cards = [
-      h('div', { class: 'stat hero' },
-        h('span', { class: 'stat-label' }, "Today's sale"),
-        d.today_sales == null ? h('span', { class: 'stat-empty' }, 'Not counted yet')
-                              : h('span', { class: 'stat-num' }, rs(d.today_sales)),
-        h('span', { class: 'stat-sub' }, d.as_of ? 'Last stock count: ' + niceDate(d.as_of) : 'Do your first stock count to see sales here.')),
-      h('div', { class: 'stat sales' },
-        h('span', { class: 'stat-label' }, 'Sales in ' + month), h('span', { class: 'stat-num' }, rs(d.month_sales)))
+      d.today_sales == null
+        ? stat('hero', 'chart', "Today's sale", 'Not counted yet', d.as_of ? 'Last stock count: ' + niceDate(d.as_of) : 'Do your first stock count to see sales here.', true)
+        : stat('hero', 'chart', "Today's sale", rs(d.today_sales), d.as_of ? 'Last stock count: ' + niceDate(d.as_of) : ''),
+      stat('sales', 'tag', 'Sales in ' + month, rs(d.month_sales))
     ];
     if (d.month_profit != null) {
       var loss = Number(d.month_profit) < 0;
-      cards.push(h('div', { class: 'stat profit' + (loss ? ' loss' : '') },
-        h('span', { class: 'stat-label' }, 'Profit in ' + month),
-        h('span', { class: 'stat-num' }, (loss ? '−' : '') + rs(Math.abs(d.month_profit)))));
+      cards.push(stat('profit' + (loss ? ' loss' : ''), 'trend', 'Profit in ' + month, (loss ? '\u2212' : '') + rs(Math.abs(d.month_profit))));
     }
-    cards.push(h('p', { class: 'dash-note' }, 'Worked out from your stock counts, spread evenly between counts.' +
-      (d.month_profit != null ? ' Profit is after salary, wastage and expenses.' : '')));
+    cards.push(h('p', { class: 'dash-note' }, icon('info'),
+      h('span', {}, 'Worked out from your stock counts, spread evenly between counts.' +
+      (d.month_profit != null ? ' Profit is after salary, wastage and expenses.' : ''))));
     box.replaceChildren.apply(box, cards);
   }
 
