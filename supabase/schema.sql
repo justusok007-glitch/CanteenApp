@@ -387,15 +387,30 @@ create index item_cost_history_item_idx on public.item_cost_history (item_id, ev
 
 -- Rebuilds the cost history and current cost of one item from the full ledger,
 -- so editing or deleting an old bill or count automatically fixes everything after it.
+-- Where an event sits on one timeline, so several counts on the same day can be told apart.
+--   end_of_day : a purchase/count made on its own date keeps its real time; a backdated purchase
+--                sits at the start of its date, a backdated count at the end of its date.
+--   start_of_day: a count sits just before its date begins, a purchase at the start of its date.
+create or replace function public.event_pos(p_date date, p_created timestamptz, p_tz text, p_start_of_day boolean, p_is_count boolean)
+returns timestamptz language sql stable as $$
+  select case
+    when p_start_of_day then (p_date::timestamp at time zone p_tz) - case when p_is_count then interval '1 second' else interval '0' end
+    when (p_created at time zone p_tz)::date = p_date then p_created
+    when p_is_count then (p_date::timestamp at time zone p_tz) + interval '1 day' - interval '1 second'
+    else (p_date::timestamp at time zone p_tz)
+  end
+$$;
+grant execute on function public.event_pos(date, timestamptz, text, boolean, boolean) to authenticated;
+
 create or replace function public.recalc_item_cost(p_item uuid) returns void
 language plpgsql security definer set search_path = public as $$
 declare
-  v_canteen uuid; v_timing text;
+  v_canteen uuid; v_timing text; v_tz text;
   r record;
   v_qty numeric := 0; v_avg numeric := 0; v_new numeric;
   v_last numeric; v_last_on date; v_has_purchase boolean := false;
 begin
-  select i.canteen_id, c.count_timing into v_canteen, v_timing
+  select i.canteen_id, c.count_timing, c.timezone into v_canteen, v_timing, v_tz
   from public.items i join public.canteens c on c.id = i.canteen_id where i.id = p_item;
   if not found then return; end if;
 
@@ -403,15 +418,15 @@ begin
 
   for r in
     select 'count'::text as kind, sc.counted_on as d,
-           case when v_timing = 'start_of_day' then 0 else 2 end as ord,
+           public.event_pos(sc.counted_on, sc.created_at, v_tz, v_timing = 'start_of_day', true) as pos,
            sc.id as ref, scl.qty as q, null::numeric as val, null::uuid as sup, null::numeric as unit
     from public.stock_count_lines scl join public.stock_counts sc on sc.id = scl.count_id
     where scl.item_id = p_item
     union all
-    select 'purchase', pb.bill_date, 1, pl.id, pl.total_pieces, pl.line_total, pb.supplier_id, pl.piece_cost
+    select 'purchase', pb.bill_date, public.event_pos(pb.bill_date, pb.created_at, v_tz, v_timing = 'start_of_day', false), pl.id, pl.total_pieces, pl.line_total, pb.supplier_id, pl.piece_cost
     from public.purchase_lines pl join public.purchase_bills pb on pb.id = pl.bill_id
     where pl.item_id = p_item
-    order by d, ord, ref
+    order by pos, ref
   loop
     if r.kind = 'count' then
       insert into public.item_cost_history
@@ -501,13 +516,14 @@ create table public.stock_counts (
   id         uuid primary key default gen_random_uuid(),
   canteen_id uuid not null default public.current_canteen_id() references public.canteens(id) on delete cascade,
   counted_on date not null default public.canteen_today(),
-  is_full    boolean not null default true,       -- a cash check needs a FULL count of all items
+  is_full    boolean not null default true,       -- a cash check needs a FULL count of all items (several counts per day are fine)
   counted_by uuid default auth.uid() references public.users(id),   -- who counted (owner or the named backup)
   notes      text,
   created_at timestamptz not null default now(),
-  unique (canteen_id, id),
-  unique (canteen_id, counted_on)                 -- one count session per day; add lines to it
+  unique (canteen_id, id)
 );
+
+create index stock_counts_day_idx on public.stock_counts (canteen_id, counted_on, created_at);
 
 create table public.stock_count_lines (
   id         uuid primary key default gen_random_uuid(),
@@ -946,7 +962,7 @@ with me as (
 lc as (
   select distinct on (scl.item_id) scl.item_id, sc.counted_on
   from public.stock_count_lines scl join public.stock_counts sc on sc.id = scl.count_id
-  order by scl.item_id, sc.counted_on desc
+  order by scl.item_id, sc.counted_on desc, sc.created_at desc
 ),
 x as (
   select i.id as item_id, i.canteen_id, i.name, i.shelf_order, i.pieces_per_pack, i.count_every_days,
@@ -982,16 +998,19 @@ from x;
 --   sold = last count + purchases in the window - wastage in the window - new count
 create or replace view public.v_item_periods as
 with cfg as (
-  select c.id as canteen_id, case when c.count_timing = 'start_of_day' then 1 else 0 end as o
+  select c.id as canteen_id, case when c.count_timing = 'start_of_day' then 1 else 0 end as o,
+         c.timezone as tz, (c.count_timing = 'start_of_day') as sod
   from public.canteens c where c.id = public.current_canteen_id()
 ),
 cnt as (
-  select scl.canteen_id, scl.item_id, sc.id as count_id, sc.counted_on, scl.qty,
-         lag(sc.counted_on) over w as prev_on, lag(scl.qty) over w as prev_qty
+  select scl.canteen_id, scl.item_id, sc.id as count_id, sc.counted_on, scl.qty, x.pos,
+         lag(sc.counted_on) over w as prev_on, lag(scl.qty) over w as prev_qty, lag(x.pos) over w as prev_pos
   from public.stock_count_lines scl
   join public.stock_counts sc on sc.id = scl.count_id
+  cross join cfg
+  cross join lateral (select public.event_pos(sc.counted_on, sc.created_at, cfg.tz, cfg.sod, true) as pos) x
   where scl.canteen_id = public.current_canteen_id()
-  window w as (partition by scl.item_id order by sc.counted_on)
+  window w as (partition by scl.item_id order by x.pos, sc.created_at, sc.id)
 )
 select cnt.canteen_id, cnt.item_id, i.name as item_name,
        cnt.prev_on as from_on, cnt.counted_on as to_on,
@@ -1003,17 +1022,22 @@ select cnt.canteen_id, cnt.item_id, i.name as item_name,
        case when public.can_see_cost() and pr.price > 0 and ch.avg_cost_after is not null
             then round((pr.price - ch.avg_cost_after) / pr.price * 100, 2) end as margin_pct,
        (s.sold < 0) as sold_negative,                          -- count mistake or missing purchase
-       case when public.can_see_cost() then ch.avg_cost_after is null end as cost_missing
+       case when public.can_see_cost() then ch.avg_cost_after is null end as cost_missing,
+       cnt.count_id
 from cnt
 join cfg on cfg.canteen_id = cnt.canteen_id
 join public.items i on i.id = cnt.item_id
 cross join lateral (
   select coalesce(sum(pl.total_pieces), 0) as q
   from public.purchase_lines pl join public.purchase_bills pb on pb.id = pl.bill_id
-  where pl.item_id = cnt.item_id and pb.bill_date > cnt.prev_on - cfg.o and pb.bill_date <= cnt.counted_on - cfg.o) pu
+  where pl.item_id = cnt.item_id
+    and public.event_pos(pb.bill_date, pb.created_at, cfg.tz, cfg.sod, false) > cnt.prev_pos
+    and public.event_pos(pb.bill_date, pb.created_at, cfg.tz, cfg.sod, false) <= cnt.pos) pu
 cross join lateral (
   select coalesce(sum(w.qty), 0) as q from public.wastage w
-  where w.item_id = cnt.item_id and w.wasted_on > cnt.prev_on - cfg.o and w.wasted_on <= cnt.counted_on - cfg.o) wa
+  where w.item_id = cnt.item_id
+    and public.event_pos(w.wasted_on, w.created_at, cfg.tz, cfg.sod, false) > cnt.prev_pos
+    and public.event_pos(w.wasted_on, w.created_at, cfg.tz, cfg.sod, false) <= cnt.pos) wa
 cross join lateral (select cnt.prev_qty + pu.q - wa.q - cnt.qty as sold) s
 cross join lateral (select public.price_on(cnt.item_id, cnt.counted_on - cfg.o) as price) pr
 left join public.item_cost_history ch
@@ -1029,19 +1053,26 @@ where cnt.prev_on is not null
 create or replace view public.v_period_report as
 with cfg as (
   select c.id as canteen_id, case when c.count_timing = 'start_of_day' then 1 else 0 end as o,
+         c.timezone as tz, (c.count_timing = 'start_of_day') as sod,
          c.tolerance_pct, c.daily_salary
   from public.canteens c where c.id = public.current_canteen_id()
 ),
-fc as (
-  select sc.canteen_id, sc.id as count_id, sc.counted_on,
-         lag(sc.id) over w as prev_id, lag(sc.counted_on) over w as prev_on
+fc0 as (   -- the day's last full count closes that day's cash
+  select distinct on (sc.counted_on) sc.canteen_id, sc.id as count_id, sc.counted_on, sc.created_at
   from public.stock_counts sc
   where sc.is_full and sc.canteen_id = public.current_canteen_id()
-  window w as (partition by sc.canteen_id order by sc.counted_on)
+  order by sc.counted_on, sc.created_at desc
+),
+fc as (
+  select f.canteen_id, f.count_id, f.counted_on, x.pos,
+         lag(f.count_id) over w as prev_id, lag(f.counted_on) over w as prev_on, lag(x.pos) over w as prev_pos
+  from fc0 f cross join cfg
+  cross join lateral (select public.event_pos(f.counted_on, f.created_at, cfg.tz, cfg.sod, true) as pos) x
+  window w as (order by f.counted_on)
 ),
 per as (
-  select fc.canteen_id, fc.count_id, fc.prev_id, fc.prev_on, fc.counted_on,
-         cfg.o, cfg.tolerance_pct, cfg.daily_salary
+  select fc.canteen_id, fc.count_id, fc.prev_id, fc.prev_on, fc.counted_on, fc.pos, fc.prev_pos,
+         cfg.o, cfg.tz, cfg.sod, cfg.tolerance_pct, cfg.daily_salary
   from fc join cfg on cfg.canteen_id = fc.canteen_id
   where fc.prev_id is not null
 ),
@@ -1061,10 +1092,14 @@ lines as (
   cross join lateral (
     select coalesce(sum(pl.total_pieces), 0) as q
     from public.purchase_lines pl join public.purchase_bills pb on pb.id = pl.bill_id
-    where pl.item_id = x.item_id and pb.bill_date > per.prev_on - per.o and pb.bill_date <= per.counted_on - per.o) pu
+    where pl.item_id = x.item_id
+      and public.event_pos(pb.bill_date, pb.created_at, per.tz, per.sod, false) > per.prev_pos
+      and public.event_pos(pb.bill_date, pb.created_at, per.tz, per.sod, false) <= per.pos) pu
   cross join lateral (
     select coalesce(sum(w.qty), 0) as q from public.wastage w
-    where w.item_id = x.item_id and w.wasted_on > per.prev_on - per.o and w.wasted_on <= per.counted_on - per.o) wa
+    where w.item_id = x.item_id
+      and public.event_pos(w.wasted_on, w.created_at, per.tz, per.sod, false) > per.prev_pos
+      and public.event_pos(w.wasted_on, w.created_at, per.tz, per.sod, false) <= per.pos) wa
   left join public.item_cost_history ch
          on ch.item_id = x.item_id and ch.event_type = 'count' and ch.ref_id = per.count_id
 ),
@@ -1184,14 +1219,16 @@ grant select on
 create or replace view public.v_sales_by_day as
 select p.canteen_id,
        gs.day::date as day,
-       sum(p.sales_value / nullif(p.to_on - p.from_on, 0)) as sales_value,
-       case when public.can_see_cost() then sum(p.gross_profit / nullif(p.to_on - p.from_on, 0)) end as gross_profit
+       sum(p.sales_value / (b.hi - b.lo + 1)) as sales_value,
+       case when public.can_see_cost() then sum(p.gross_profit / (b.hi - b.lo + 1)) end as gross_profit
 from public.v_item_periods p
 join public.canteens c on c.id = p.canteen_id
-cross join lateral generate_series(
-  (p.from_on + 1 - case when c.count_timing = 'start_of_day' then 1 else 0 end)::timestamp,
-  (p.to_on          - case when c.count_timing = 'start_of_day' then 1 else 0 end)::timestamp,
-  interval '1 day') as gs(day)
+cross join lateral (
+  select case when p.to_on = p.from_on then p.to_on
+              else p.from_on + 1 - case when c.count_timing = 'start_of_day' then 1 else 0 end end as lo,
+         case when p.to_on = p.from_on then p.to_on
+              else p.to_on - case when c.count_timing = 'start_of_day' then 1 else 0 end end as hi) b
+cross join lateral generate_series(b.lo::timestamp, b.hi::timestamp, interval '1 day') as gs(day)
 group by p.canteen_id, gs.day;
 
 -- Single row for the home screen.

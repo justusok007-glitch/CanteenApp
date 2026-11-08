@@ -228,7 +228,7 @@
     }
     var cards = [
       d.today_sales == null
-        ? stat('hero', 'chart', "Today's sale", 'Not counted yet', d.as_of ? 'Last count: ' + niceDate(d.as_of) + '. Sales show after your next count on another day.' : 'Do your first stock count to see sales here.', true)
+        ? stat('hero', 'chart', "Today's sale", 'Not counted yet', d.as_of ? 'Last count: ' + niceDate(d.as_of) + '. Sales show after your next count.' : 'Do your first stock count to see sales here.', true)
         : stat('hero', 'chart', "Today's sale", rs(d.today_sales), d.as_of ? 'Last stock count: ' + niceDate(d.as_of) : ''),
       stat('sales', 'tag', 'Sales in ' + month, rs(d.month_sales))
     ];
