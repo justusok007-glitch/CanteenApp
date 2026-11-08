@@ -108,10 +108,6 @@
     openSettings: function () { return renderAccount(); }
   };
 
-  function greeting() {
-    var hr = new Date().getHours();
-    return hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
-  }
   function toEmail(id) {
     id = id.trim().toLowerCase();
     return id.indexOf('@') > -1 ? id : id + '@' + (cfg.loginDomain || 'canteen.local');
@@ -261,7 +257,7 @@
 
     show(h('div', {},
       h('div', { class: 'hdr', style: 'align-items:flex-start' },
-        h('div', {}, h('p', { class: 'hello' }, greeting() + ','), h('h1', {}, me.full_name))),
+        h('div', {}, h('p', { class: 'hello' }, 'Assalamu alaikum,'), h('h1', {}, me.full_name))),
       me.is_admin && window.Canteen.backup ? window.Canteen.backup.banner() : null,
       dash,
       canAddPurchase ? h('div', { class: 'cta' },
