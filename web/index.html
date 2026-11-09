@@ -14,8 +14,10 @@
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;500;600;700&family=Aref+Ruqaa:wght@400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261108k">
+  <!-- fonts load in the background so the app shows at once on a slow signal (system font until they arrive) -->
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;500;600;700&family=Aref+Ruqaa:wght@400;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;500;600;700&family=Aref+Ruqaa:wght@400;700&display=swap" rel="stylesheet"></noscript>
+  <link rel="stylesheet" href="style.css?v=20261109a">
 </head>
 <body>
   <main id="app" tabindex="-1" aria-live="polite">
@@ -26,17 +28,17 @@
   </main>
   <nav id="tabs" aria-label="Main" hidden></nav>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-  <script src="config.js?v=20261108k"></script>
-  <script src="app.js?v=20261108k"></script>
-  <script src="purchase.js?v=20261108k"></script>
-  <script src="items.js?v=20261108k"></script>
-  <script src="stock.js?v=20261108k"></script>
-  <script src="cash.js?v=20261108k"></script>
-  <script src="expenses.js?v=20261108k"></script>
-  <script src="suppliers.js?v=20261108k"></script>
-  <script src="reports.js?v=20261108k"></script>
-  <script src="users.js?v=20261108k"></script>
-  <script src="backup.js?v=20261108k"></script>
+  <script src="config.js?v=20261109a"></script>
+  <script src="app.js?v=20261109a"></script>
+  <script src="purchase.js?v=20261109a"></script>
+  <script src="items.js?v=20261109a"></script>
+  <script src="stock.js?v=20261109a"></script>
+  <script src="cash.js?v=20261109a"></script>
+  <script src="expenses.js?v=20261109a"></script>
+  <script src="suppliers.js?v=20261109a"></script>
+  <script src="reports.js?v=20261109a"></script>
+  <script src="users.js?v=20261109a"></script>
+  <script src="backup.js?v=20261109a"></script>
   <script>if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });</script>
 </body>
 </html>

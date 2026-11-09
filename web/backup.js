@@ -38,8 +38,9 @@
   }
 
   async function makeBackup(me) {
-    var tables = {};
-    for (var i = 0; i < TABLES.length; i++) tables[TABLES[i]] = await fetchAll(TABLES[i]);
+    var tables = {};   // all tables are read at the same time, not one after another
+    var all = await Promise.all(TABLES.map(fetchAll));
+    TABLES.forEach(function (t, i) { tables[t] = all[i]; });
     return { format: 'canteenapp-backup', version: 1, created_at: new Date().toISOString(), made_by: me.full_name, tables: tables };
   }
 

@@ -1,6 +1,6 @@
 // Keeps the app files on the phone so Canteen Record opens without internet.
-// Own files: network first (always fresh when online, saved copy when not). Fonts and libraries: saved copy first.
-const V = 'canteen-shell-v1';
+// Versioned own files (?v=) and fonts/libraries: saved copy first. The page and images: network first, saved copy when slow or offline.
+const V = 'canteen-shell-v2';
 const OWN = self.location.origin;
 const CDN = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
@@ -44,8 +44,21 @@ self.addEventListener('fetch', function (e) {
   if (own) {
     e.respondWith((async function () {
       const c = await caches.open(V);
+      // Files with ?v=... never change (a new version gets a new ?v=), so the saved copy is used straight away.
+      if (/[?&]v=/.test(url.search)) {
+        const hit = await c.match(req);
+        if (hit) return hit;
+        try {
+          const res = await fetch(req);
+          if (res && res.ok) c.put(req, res.clone());
+          return res;
+        } catch (err) {
+          return (await c.match(req, { ignoreSearch: true })) || Response.error();   // offline: an older saved copy
+        }
+      }
+      // The page itself and images: fresh copy when the network answers quickly, saved copy otherwise.
       try {
-        const res = await withTimeout(fetch(req), 4000);
+        const res = await withTimeout(fetch(req), req.mode === 'navigate' ? 3000 : 4000);
         if (res && res.ok) c.put(req, res.clone());
         return res;
       } catch (err) {

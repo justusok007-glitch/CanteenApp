@@ -10,6 +10,10 @@
   function rs(n) { return 'Rs ' + (Math.round(Number(n) * 100) / 100).toLocaleString('en-PK', { maximumFractionDigits: 2 }); }
   function niceDate(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
   function show(node) { C.show(node, 'items'); }
+  function stockText(s) {
+    if (s.stock_qty == null || (s.last_count_qty == null && !(Number(s.purchased_since) > 0))) return null;
+    return (Math.round(Math.max(0, Number(s.stock_qty)) * 100) / 100) + ' in stock';
+  }
   var FLAG = { no_cost: ['No cost yet', 'warn'], no_price: ['No price', 'warn'], below_cost: ['Below cost', 'bad'], low: ['Low margin', 'warn'], good: ['Good margin', 'good'] };
 
   C.screens.items = async function (me, perms, openId, showHidden) {
@@ -36,9 +40,10 @@
     var rows = items.map(function (i) {
       var s = status[i.id] || {}, f = FLAG[s.margin_flag];
       var bits = [s.sell_price != null ? 'Price ' + rs(s.sell_price) : 'No price'];
+      if (stockText(s)) bits.unshift(stockText(s));
       if (s.avg_cost != null) bits.push('cost ' + rs(s.avg_cost));
       if (s.margin_pct != null) bits.push(Number(s.margin_pct) + '% margin');
-      var row = h('button', { class: 'sup-row', type: 'button', 'data-name': i.name.toLowerCase(), onclick: function () { reload(i.id); } },
+      var row = h('button', { class: 'sup-row', type: 'button', 'data-name': i.name.toLowerCase(), onclick: function () { detail(i); } },
         h('span', { class: 'sup-main' }, h('b', {}, i.name), h('span', { class: 'muted' }, bits.join(' · '))),
         f ? h('span', { class: 'badge ' + f[1] }, f[0]) : null, icon('chevron'));
       return row;
@@ -118,6 +123,7 @@
       if (s.avg_cost != null) facts.push(['Average cost', rs(s.avg_cost)]);
       if (s.last_cost != null) facts.push(['Last cost', rs(s.last_cost)]);
       if (s.margin_pct != null) facts.push(['Margin', Number(s.margin_pct) + '%']);
+      if (stockText(s)) facts.unshift(['Stock now', stockText(s).replace(' in stock', ' pieces')]);
       facts.push(['Last counted', s.last_counted_on ? niceDate(s.last_counted_on) : 'Never']);
 
       show(h('div', {}, C.header(i.name, function () { reload(); }),

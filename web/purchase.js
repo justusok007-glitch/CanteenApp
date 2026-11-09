@@ -30,7 +30,7 @@
     show(h('div', {}, C.header('New purchase', C.goHome), h('p', { class: 'muted' }, 'Loading items and suppliers…')));
     var r = await Promise.all([
       sb.from('items').select('id,name,pieces_per_pack,last_supplier_id').eq('is_active', true).order('name'),
-      sb.from('v_item_status').select('item_id,sell_price,last_cost'),
+      sb.from('v_item_status').select('item_id,sell_price,last_cost,avg_cost,stock_qty'),
       sb.from('suppliers').select('id,name').eq('is_active', true).order('name')
     ]);
     var failed = r.filter(function (x) { return x.error; })[0];
@@ -43,22 +43,18 @@
     items.forEach(function (i) { byName[key(i.name)] = i; });
 
     var st = { supplierId: '', date: today(), lines: [] };
-    var basisCache = {};
+
+    // Stock now and average cost, already loaded with the items (used for the review preview).
+    function basis(itemId) {
+      var x = itemId && status[itemId];
+      if (!x) return { qty: 0, avg: 0 };
+      var avg = x.avg_cost != null ? Number(x.avg_cost) : NaN;
+      return { qty: Math.max(0, Number(x.stock_qty) || 0), avg: avg };
+    }
 
     function fail(msg) {
       show(h('div', {}, C.header('New purchase', C.goHome), h('div', { class: 'error', role: 'alert' }, msg),
         h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: C.goHome }, 'Back to home'))));
-    }
-
-    // Stock and average cost as the database last computed them (used for the review preview).
-    async function basis(itemId) {
-      if (!itemId) return { qty: 0, avg: 0 };
-      if (basisCache[itemId]) return basisCache[itemId];
-      var res = await sb.from('item_cost_history').select('qty_after,avg_cost_after')
-        .eq('item_id', itemId).order('event_date', { ascending: false }).order('id', { ascending: false }).limit(1);
-      var row = res.data && res.data[0];
-      basisCache[itemId] = row ? { qty: Number(row.qty_after), avg: Number(row.avg_cost_after) } : { qty: 0, avg: 0 };
-      return basisCache[itemId];
     }
 
     // ---------------------------------------------------------------- entry
@@ -220,17 +216,17 @@
     }
 
     // ---------------------------------------------------------------- review (receipt)
-    async function renderReview(message) {
-      show(h('div', {}, C.header('Review bill', function () { renderEntry(); }), h('p', { class: 'muted' }, 'Working out the new stock and costs…')));
-      var previews = await Promise.all(st.lines.map(async function (l) {
-        var b = await basis(l.item_id);
+    function renderReview(message) {
+      var previews = st.lines.map(function (l) {
+        var b = basis(l.item_id);
         var pieces = l.packs * l.ppp, value = l.packs * l.packCost, newQty = b.qty + pieces;
-        var newAvg = newQty > 0 ? (b.qty * b.avg + value) / newQty : l.pieceCost;
+        // stock with no known cost yet takes this purchase's price (same rule as the database)
+        var newAvg = newQty > 0 && isFinite(b.avg) ? (b.qty * b.avg + value) / newQty : l.pieceCost;
         var cur = l.item_id && status[l.item_id] ? Number(status[l.item_id].sell_price) : NaN;
         var price = l.sell != null ? l.sell : cur;
         return { l: l, pieces: pieces, value: value, newQty: newQty, newAvg: newAvg,
           margin: isFinite(price) && price > 0 ? (price - newAvg) / price * 100 : NaN, price: price };
-      }));
+      });
       var total = Math.round(previews.reduce(function (a, p) { return a + p.value; }, 0) * 100) / 100;
       var supplierName = (suppliers.filter(function (s) { return s.id === st.supplierId; })[0] || {}).name || '';
 
@@ -278,7 +274,7 @@
             h('div', { class: 'r-total num', style: 'padding-top:0' }, h('span', {}, 'Pending'), h('b', {}, 'Rs ' + money(total - p)))),
           h('div', { class: 'actions' },
             h('button', { class: 'btn', type: 'button', onclick: C.goHome }, 'Back to home'),
-            h('button', { class: 'btn btn-primary', type: 'button', onclick: function () { st = { supplierId: '', date: today(), lines: [] }; basisCache = {}; renderEntry(); } }, 'New purchase'))));
+            h('button', { class: 'btn btn-primary', type: 'button', onclick: function () { C.screens.purchases(me, perms); } }, 'New purchase'))));
       });
 
       show(h('div', {},
