@@ -380,10 +380,12 @@ create table public.item_cost_history (
   qty_before     numeric(14,2) not null,
   qty_after      numeric(14,2) not null,
   unit_cost      numeric(14,4),            -- piece cost paid (purchase events)
-  avg_cost_after numeric(14,4) not null,
+  avg_cost_after numeric(14,4),            -- NULL = no purchase yet, cost unknown
+  pos            timestamptz,              -- place on the timeline (lets a rebuild start mid-way)
   unique (item_id, event_type, ref_id)
 );
 create index item_cost_history_item_idx on public.item_cost_history (item_id, event_date);
+create index item_cost_history_pos_idx on public.item_cost_history (item_id, pos);
 
 -- Rebuilds the cost history and current cost of one item from the full ledger,
 -- so editing or deleting an old bill or count automatically fixes everything after it.
@@ -402,43 +404,70 @@ returns timestamptz language sql stable as $$
 $$;
 grant execute on function public.event_pos(date, timestamptz, text, boolean, boolean) to authenticated;
 
-create or replace function public.recalc_item_cost(p_item uuid) returns void
+-- Rebuilds one item's cost history from p_from onward (NULL = from the beginning).
+create or replace function public.recalc_item_cost_from(p_item uuid, p_from timestamptz) returns void
 language plpgsql security definer set search_path = public as $$
 declare
   v_canteen uuid; v_timing text; v_tz text;
   r record;
-  v_qty numeric := 0; v_avg numeric := 0; v_new numeric;
+  v_qty numeric := 0; v_avg numeric; v_new numeric;
   v_last numeric; v_last_on date; v_has_purchase boolean := false;
+  v_seed_qty numeric; v_seed_avg numeric;
 begin
   select i.canteen_id, c.count_timing, c.timezone into v_canteen, v_timing, v_tz
   from public.items i join public.canteens c on c.id = i.canteen_id where i.id = p_item;
   if not found then return; end if;
 
-  delete from public.item_cost_history where item_id = p_item;
+  -- rows written before this migration have no position: rebuild everything once
+  if p_from is not null and exists (select 1 from public.item_cost_history where item_id = p_item and pos is null) then
+    p_from := null;
+  end if;
+
+  if p_from is null then
+    delete from public.item_cost_history where item_id = p_item;
+  else
+    select h.qty_after, h.avg_cost_after into v_seed_qty, v_seed_avg
+    from public.item_cost_history h where h.item_id = p_item and h.pos < p_from
+    order by h.pos desc, h.id desc limit 1;
+    if found then v_qty := v_seed_qty; v_avg := v_seed_avg; end if;
+    select h.unit_cost, h.event_date into v_last, v_last_on
+    from public.item_cost_history h where h.item_id = p_item and h.event_type = 'purchase' and h.pos < p_from
+    order by h.pos desc, h.id desc limit 1;
+    v_has_purchase := found;
+    delete from public.item_cost_history where item_id = p_item and pos >= p_from;
+  end if;
 
   for r in
-    select 'count'::text as kind, sc.counted_on as d,
-           public.event_pos(sc.counted_on, sc.created_at, v_tz, v_timing = 'start_of_day', true) as pos,
-           sc.id as ref, scl.qty as q, null::numeric as val, null::uuid as sup, null::numeric as unit
-    from public.stock_count_lines scl join public.stock_counts sc on sc.id = scl.count_id
-    where scl.item_id = p_item
-    union all
-    select 'purchase', pb.bill_date, public.event_pos(pb.bill_date, pb.created_at, v_tz, v_timing = 'start_of_day', false), pl.id, pl.total_pieces, pl.line_total, pb.supplier_id, pl.piece_cost
-    from public.purchase_lines pl join public.purchase_bills pb on pb.id = pl.bill_id
-    where pl.item_id = p_item
-    order by pos, ref
+    select * from (
+      select 'count'::text as kind, sc.counted_on as d,
+             public.event_pos(sc.counted_on, sc.created_at, v_tz, v_timing = 'start_of_day', true) as pos,
+             sc.id as ref, scl.qty as q, null::numeric as val, null::uuid as sup, null::numeric as unit
+      from public.stock_count_lines scl join public.stock_counts sc on sc.id = scl.count_id
+      where scl.item_id = p_item
+      union all
+      select 'purchase', pb.bill_date, public.event_pos(pb.bill_date, pb.created_at, v_tz, v_timing = 'start_of_day', false),
+             pl.id, pl.total_pieces, pl.line_total, pb.supplier_id, pl.piece_cost
+      from public.purchase_lines pl join public.purchase_bills pb on pb.id = pl.bill_id
+      where pl.item_id = p_item
+    ) e
+    where p_from is null or e.pos >= p_from
+    order by e.pos, e.ref
   loop
     if r.kind = 'count' then
       insert into public.item_cost_history
-        (canteen_id, item_id, event_type, event_date, ref_id, qty_before, qty_after, avg_cost_after)
-      values (v_canteen, p_item, 'count', r.d, r.ref, v_qty, r.q, v_avg);
+        (canteen_id, item_id, event_type, event_date, ref_id, qty_before, qty_after, avg_cost_after, pos)
+      values (v_canteen, p_item, 'count', r.d, r.ref, v_qty, r.q, case when v_has_purchase then v_avg end, r.pos);
       v_qty := r.q;
     else
       v_new := v_qty + r.q;
-      if v_new > 0 then v_avg := (v_qty * v_avg + r.val) / v_new; end if;
+      if not v_has_purchase or v_avg is null then
+        v_avg := r.unit;   -- stock already on the shelf had no known cost: value it at the first price paid
+      elsif v_new > 0 then
+        v_avg := (v_qty * v_avg + r.val) / v_new;
+      end if;
       insert into public.item_cost_history
-        (canteen_id, item_id, event_type, event_date, ref_id, supplier_id, qty_before, qty_after, unit_cost, avg_cost_after)
-      values (v_canteen, p_item, 'purchase', r.d, r.ref, r.sup, v_qty, v_new, r.unit, v_avg);
+        (canteen_id, item_id, event_type, event_date, ref_id, supplier_id, qty_before, qty_after, unit_cost, avg_cost_after, pos)
+      values (v_canteen, p_item, 'purchase', r.d, r.ref, r.sup, v_qty, v_new, r.unit, v_avg, r.pos);
       v_qty := v_new; v_last := r.unit; v_last_on := r.d; v_has_purchase := true;
     end if;
   end loop;
@@ -453,9 +482,15 @@ begin
   end if;
 end $$;
 
+-- Full rebuild (used after edits, deletes and date changes).
+create or replace function public.recalc_item_cost(p_item uuid) returns void
+language sql security definer set search_path = public as $$
+  select public.recalc_item_cost_from(p_item, null)
+$$;
+
 create or replace function public.purchase_lines_after() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare v_bill uuid; v_sup uuid; v_date date; v_is_latest boolean;
+declare v_bill uuid; v_sup uuid; v_date date; v_is_latest boolean; v_pos timestamptz;
 begin
   -- keep bill totals in step with their lines
   for v_bill in
@@ -469,9 +504,14 @@ begin
   end loop;
 
   -- rebuild cost for the affected item(s)
-  if tg_op <> 'INSERT' then perform public.recalc_item_cost(old.item_id); end if;
-  if tg_op <> 'DELETE' and not (tg_op = 'UPDATE' and new.item_id = old.item_id) then
-    perform public.recalc_item_cost(new.item_id);
+  if tg_op = 'INSERT' then
+    select public.event_pos(b.bill_date, b.created_at, c.timezone, c.count_timing = 'start_of_day', false)
+      into v_pos
+    from public.purchase_bills b join public.canteens c on c.id = b.canteen_id where b.id = new.bill_id;
+    perform public.recalc_item_cost_from(new.item_id, v_pos);
+  else
+    perform public.recalc_item_cost(old.item_id);
+    if tg_op = 'UPDATE' and new.item_id <> old.item_id then perform public.recalc_item_cost(new.item_id); end if;
   end if;
 
   -- a new line refreshes the item's usual pack size / last supplier and may set a new sell price
@@ -492,6 +532,7 @@ begin
   end if;
   return null;
 end $$;
+
 create trigger purchase_lines_after after insert or update or delete on public.purchase_lines
   for each row execute function public.purchase_lines_after();
 
@@ -540,12 +581,17 @@ create index stock_count_lines_item_idx on public.stock_count_lines (item_id);
 create or replace function public.stock_count_lines_after() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  if tg_op <> 'INSERT' then perform public.recalc_item_cost(old.item_id); end if;
-  if tg_op <> 'DELETE' and not (tg_op = 'UPDATE' and new.item_id = old.item_id) then
-    perform public.recalc_item_cost(new.item_id);
+  if tg_op = 'INSERT' then
+    perform public.recalc_item_cost_from(new.item_id,
+      (select public.event_pos(sc.counted_on, sc.created_at, c.timezone, c.count_timing = 'start_of_day', true)
+       from public.stock_counts sc join public.canteens c on c.id = sc.canteen_id where sc.id = new.count_id));
+    return null;
   end if;
+  perform public.recalc_item_cost(old.item_id);
+  if tg_op = 'UPDATE' and new.item_id <> old.item_id then perform public.recalc_item_cost(new.item_id); end if;
   return null;
 end $$;
+
 create trigger stock_count_lines_after after insert or update or delete on public.stock_count_lines
   for each row execute function public.stock_count_lines_after();
 
@@ -576,6 +622,7 @@ create table public.wastage (
   created_at timestamptz not null default now(),
   foreign key (canteen_id, item_id) references public.items(canteen_id, id)
 );
+create index wastage_item_idx on public.wastage (item_id);
 
 -- -----------------------------------------------------------------------------
 -- 6. Cash: handovers, credit (udhar), expenses, school days
@@ -951,18 +998,14 @@ from public.features f
 cross join public.v_me m
 left join public.role_permissions rp on rp.role_id = m.role_id and rp.feature = f.feature;
 
--- Count screen: active items in shelf order with "last counted" and an overdue flag.
--- No expected stock is shown here on purpose, so counting stays blind.
--- Cost / margin columns appear only for roles with show_cost.
+-- Items in shelf order with "last counted", an overdue flag and the stock on the shelf now.
+-- Items with their stock on the shelf now. New columns are added at the end.
+--   stock_qty = last count + purchases since - wastage since  (never counted: purchases - wastage)
 create or replace view public.v_item_status as
 with me as (
-  select c.id as canteen_id, c.stale_count_days, c.min_margin_pct, c.target_margin_pct
+  select c.id as canteen_id, c.stale_count_days, c.min_margin_pct, c.target_margin_pct,
+         c.timezone as tz, (c.count_timing = 'start_of_day') as sod
   from public.canteens c where c.id = public.current_canteen_id()
-),
-lc as (
-  select distinct on (scl.item_id) scl.item_id, sc.counted_on
-  from public.stock_count_lines scl join public.stock_counts sc on sc.id = scl.count_id
-  order by scl.item_id, sc.counted_on desc, sc.created_at desc
 ),
 x as (
   select i.id as item_id, i.canteen_id, i.name, i.shelf_order, i.pieces_per_pack, i.count_every_days,
@@ -971,13 +1014,31 @@ x as (
          public.canteen_today() - lc.counted_on as days_since_count,
          (lc.counted_on is null
           or public.canteen_today() - lc.counted_on > coalesce(i.count_every_days, me.stale_count_days)) as count_overdue,
-         ic.avg_cost, ic.last_cost, me.min_margin_pct, me.target_margin_pct
+         ic.avg_cost, ic.last_cost, me.min_margin_pct, me.target_margin_pct,
+         lc.qty as last_count_qty, pu.q as purchased_since, wa.q as wasted_since
   from public.items i
   join me on me.canteen_id = i.canteen_id
-  left join lc on lc.item_id = i.id
+  left join lateral (
+    select sc.counted_on, scl.qty, p.pos
+    from public.stock_count_lines scl
+    join public.stock_counts sc on sc.id = scl.count_id
+    cross join lateral (select public.event_pos(sc.counted_on, sc.created_at, me.tz, me.sod, true) as pos) p
+    where scl.item_id = i.id
+    order by p.pos desc, sc.created_at desc, sc.id desc
+    limit 1) lc on true
   left join public.item_costs ic on ic.item_id = i.id
+  cross join lateral (
+    select coalesce(sum(pl.total_pieces), 0) as q
+    from public.purchase_lines pl join public.purchase_bills pb on pb.id = pl.bill_id
+    where pl.item_id = i.id
+      and (lc.pos is null or public.event_pos(pb.bill_date, pb.created_at, me.tz, me.sod, false) > lc.pos)) pu
+  cross join lateral (
+    select coalesce(sum(w.qty), 0) as q from public.wastage w
+    where w.item_id = i.id
+      and (lc.pos is null or public.event_pos(w.wasted_on, w.created_at, me.tz, me.sod, false) > lc.pos)) wa
   where i.is_active
-    and ((select public.has_perm('items', 'view')) or (select public.has_perm('stock_counts', 'view')))
+    and ((select public.has_perm('items', 'view')) or (select public.has_perm('stock_counts', 'view'))
+         or (select public.has_perm('reports', 'view')) or (select public.has_perm('purchases', 'add')))
 )
 select item_id, canteen_id, name, shelf_order, pieces_per_pack, count_every_days, sell_price,
        last_counted_on, days_since_count, count_overdue,
@@ -991,11 +1052,15 @@ select item_id, canteen_id, name, shelf_order, pieces_per_pack, count_every_days
             when sell_price < avg_cost then 'below_cost'
             when min_margin_pct is not null and (sell_price - avg_cost) / nullif(sell_price,0) * 100 < min_margin_pct then 'low'
             when target_margin_pct is not null and (sell_price - avg_cost) / nullif(sell_price,0) * 100 >= target_margin_pct then 'good'
-            else 'ok' end as margin_flag
+            else 'ok' end as margin_flag,
+       last_count_qty, purchased_since, wasted_since,
+       coalesce(last_count_qty, 0) + purchased_since - wasted_since as stock_qty
 from x;
 
 -- Per item, between each pair of consecutive counts (partial counts included):
 --   sold = last count + purchases in the window - wastage in the window - new count
+-- An item bought before it was ever counted starts at 0 stock, so its first count closes a period too
+-- (from_on is then the date of its first purchase).
 create or replace view public.v_item_periods as
 with cfg as (
   select c.id as canteen_id, case when c.count_timing = 'start_of_day' then 1 else 0 end as o,
@@ -1013,8 +1078,8 @@ cnt as (
   window w as (partition by scl.item_id order by x.pos, sc.created_at, sc.id)
 )
 select cnt.canteen_id, cnt.item_id, i.name as item_name,
-       cnt.prev_on as from_on, cnt.counted_on as to_on,
-       cnt.prev_qty as opening_qty, pu.q as purchased_qty, wa.q as wastage_qty, cnt.qty as closing_qty,
+       coalesce(cnt.prev_on, pu.first_on) as from_on, cnt.counted_on as to_on,
+       coalesce(cnt.prev_qty, 0) as opening_qty, pu.q as purchased_qty, wa.q as wastage_qty, cnt.qty as closing_qty,
        s.sold as sold_qty, pr.price as sell_price, s.sold * pr.price as sales_value,
        case when public.can_see_cost() then ch.avg_cost_after end as avg_cost,
        case when public.can_see_cost() then s.sold * ch.avg_cost_after end as cogs,
@@ -1028,21 +1093,21 @@ from cnt
 join cfg on cfg.canteen_id = cnt.canteen_id
 join public.items i on i.id = cnt.item_id
 cross join lateral (
-  select coalesce(sum(pl.total_pieces), 0) as q
+  select coalesce(sum(pl.total_pieces), 0) as q, min(pb.bill_date) as first_on
   from public.purchase_lines pl join public.purchase_bills pb on pb.id = pl.bill_id
   where pl.item_id = cnt.item_id
-    and public.event_pos(pb.bill_date, pb.created_at, cfg.tz, cfg.sod, false) > cnt.prev_pos
+    and (cnt.prev_pos is null or public.event_pos(pb.bill_date, pb.created_at, cfg.tz, cfg.sod, false) > cnt.prev_pos)
     and public.event_pos(pb.bill_date, pb.created_at, cfg.tz, cfg.sod, false) <= cnt.pos) pu
 cross join lateral (
   select coalesce(sum(w.qty), 0) as q from public.wastage w
   where w.item_id = cnt.item_id
-    and public.event_pos(w.wasted_on, w.created_at, cfg.tz, cfg.sod, false) > cnt.prev_pos
+    and (cnt.prev_pos is null or public.event_pos(w.wasted_on, w.created_at, cfg.tz, cfg.sod, false) > cnt.prev_pos)
     and public.event_pos(w.wasted_on, w.created_at, cfg.tz, cfg.sod, false) <= cnt.pos) wa
-cross join lateral (select cnt.prev_qty + pu.q - wa.q - cnt.qty as sold) s
+cross join lateral (select coalesce(cnt.prev_qty, 0) + pu.q - wa.q - cnt.qty as sold) s
 cross join lateral (select public.price_on(cnt.item_id, cnt.counted_on - cfg.o) as price) pr
 left join public.item_cost_history ch
        on ch.item_id = cnt.item_id and ch.event_type = 'count' and ch.ref_id = cnt.count_id
-where cnt.prev_on is not null
+where (cnt.prev_on is not null or pu.q > 0)
   and (select public.has_perm('reports', 'view'));
 
 -- Cash check and profit, between each pair of consecutive FULL counts.
@@ -1078,9 +1143,9 @@ per as (
 ),
 lines as (
   select per.canteen_id, per.count_id, per.prev_on, per.counted_on, per.o, per.tolerance_pct, per.daily_salary,
-         x.item_id, x.open_q, x.close_q, wa.q as wasted,
-         case when x.open_q is not null and x.close_q is not null
-              then x.open_q + pu.q - wa.q - x.close_q end as sold,
+         x.item_id, oq.open_q, x.close_q, wa.q as wasted,
+         case when oq.open_q is not null and x.close_q is not null
+              then oq.open_q + pu.q - wa.q - x.close_q end as sold,
          public.price_on(x.item_id, per.counted_on - per.o) as price,
          ch.avg_cost_after as avg_cost
   from per
@@ -1089,6 +1154,13 @@ lines as (
     from (select item_id, qty from public.stock_count_lines where count_id = per.prev_id) a
     full join (select item_id, qty from public.stock_count_lines where count_id = per.count_id) b using (item_id)
   ) x
+  cross join lateral (
+    select coalesce(x.open_q,
+             case when not exists (
+                    select 1 from public.stock_count_lines l2 join public.stock_counts s2 on s2.id = l2.count_id
+                    where l2.item_id = x.item_id
+                      and public.event_pos(s2.counted_on, s2.created_at, per.tz, per.sod, true) <= per.prev_pos)
+                  then 0 end) as open_q) oq
   cross join lateral (
     select coalesce(sum(pl.total_pieces), 0) as q
     from public.purchase_lines pl join public.purchase_bills pb on pb.id = pl.bill_id
@@ -1237,16 +1309,26 @@ group by p.canteen_id, gs.day;
 create or replace view public.v_dashboard as
 with t as (
   select c.id as canteen_id, public.canteen_today() as today,
-         date_trunc('month', public.canteen_today())::date as m0
+         date_trunc('month', public.canteen_today())::date as m0,
+         case when c.count_timing = 'start_of_day' then 1 else 0 end as o
   from public.canteens c where c.id = public.current_canteen_id()
 ),
+p as (
+  select ip.canteen_id, ip.sales_value, ip.gross_profit,
+         case when ip.to_on = ip.from_on then ip.to_on else ip.from_on + 1 - t.o end as lo,
+         case when ip.to_on = ip.from_on then ip.to_on else ip.to_on - t.o end as hi
+  from public.v_item_periods ip join t on t.canteen_id = ip.canteen_id
+  where ip.to_on >= date_trunc('month', public.canteen_today())::date
+),
 s as (
-  select d.canteen_id,
-         sum(d.sales_value)  filter (where d.day between t.m0 and t.today) as month_sales,
-         sum(d.gross_profit) filter (where d.day between t.m0 and t.today) as month_gross,
-         sum(d.sales_value)  filter (where d.day = t.today)                as today_sales
-  from public.v_sales_by_day d join t on t.canteen_id = d.canteen_id
-  group by d.canteen_id
+  select p.canteen_id,
+         sum(p.sales_value  * (least(p.hi, t.today) - greatest(p.lo, t.m0) + 1) / (p.hi - p.lo + 1))
+           filter (where p.hi >= t.m0 and p.lo <= t.today) as month_sales,
+         sum(p.gross_profit * (least(p.hi, t.today) - greatest(p.lo, t.m0) + 1) / (p.hi - p.lo + 1))
+           filter (where p.hi >= t.m0 and p.lo <= t.today) as month_gross,
+         sum(p.sales_value / (p.hi - p.lo + 1)) filter (where t.today between p.lo and p.hi) as today_sales
+  from p join t on t.canteen_id = p.canteen_id
+  group by p.canteen_id
 )
 select t.canteen_id,
        (select max(sc.counted_on) from public.stock_counts sc where sc.canteen_id = t.canteen_id) as as_of,

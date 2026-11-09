@@ -36,58 +36,27 @@
     show(h('div', {}, C.header('Stock count', C.goHome), h('p', { class: 'muted' }, 'Loading items…')));
 
     var date = today();
-    var r = await Promise.all([
-      sb.from('v_item_status').select('item_id,name,shelf_order,last_counted_on,days_since_count,count_overdue'),
-      sb.from('stock_counts').select('id,counted_on,created_at,is_full').order('counted_on', { ascending: false }).order('created_at', { ascending: false }).limit(6)
-    ]);
-    if (r[0].error) { fail('Could not load items: ' + r[0].error.message); return; }
-    if (r[1].error) { fail('Could not load earlier counts: ' + r[1].error.message); return; }
+    // One request gives every item with its stock now (worked out by the database:
+    // last count + purchases since - wastage since; an item never counted starts from 0).
+    var BASE = 'item_id,name,shelf_order,last_counted_on,days_since_count,count_overdue';
+    var r = await sb.from('v_item_status').select(BASE + ',last_count_qty,purchased_since,wasted_since,stock_qty');
+    if (r.error && /column/i.test(r.error.message || '')) r = await sb.from('v_item_status').select(BASE);   // database update 006 not run yet
+    if (r.error) { fail('Could not load items: ' + r.error.message); return; }
 
-    var items = (r[0].data || []).slice().sort(function (a, b) {
+    var items = (r.data || []).slice().sort(function (a, b) {
       var sa = a.shelf_order == null ? 1e9 : a.shelf_order, sbb = b.shelf_order == null ? 1e9 : b.shelf_order;
       return sa - sbb || a.name.localeCompare(b.name);
     });
     if (!items.length) { fail('No items yet. Add a purchase first so items exist to count.'); return; }
 
-    var counts = r[1].data || [];
-    var lastQty = {};   // latest earlier count of each item
-    var lastAt = {};    // when that count sits on the timeline
-    // Same timeline rule as the database: an entry made on its own date keeps its real time;
-    // a backdated purchase sits at the start of its date, a backdated count at the end.
-    function dayOf(ts) { var d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-    function countPos(c) { return dayOf(c.created_at) === c.counted_on ? new Date(c.created_at).getTime() : new Date(c.counted_on + 'T23:59:59').getTime(); }
-    function entryPos(date, created) { return dayOf(created) === date ? new Date(created).getTime() : new Date(date + 'T00:00:00').getTime(); }
-    if (counts.length) {
-      var lr = await sb.from('stock_count_lines').select('count_id,item_id,qty').in('count_id', counts.map(function (c) { return c.id; }));
-      if (lr.error) { fail('Could not load earlier counts: ' + lr.error.message); return; }
-      var order = counts.map(function (c) { return c.id; });   // newest first; today's earlier counts included
-      var byCount = {};
-      (lr.data || []).forEach(function (l) { (byCount[l.count_id] = byCount[l.count_id] || {})[l.item_id] = Number(l.qty); });
-      order.forEach(function (id) {
-        Object.keys(byCount[id] || {}).forEach(function (it) { if (!(it in lastQty)) { lastQty[it] = byCount[id][it]; lastAt[it] = countPos(counts.filter(function (c) { return c.id === id; })[0]); } });
-      });
-    }
-    // Stock that should be on the shelf now: last count + purchases since - wastage since.
-    var added = {}, lost = {}, expected = {};
-    var since = Object.keys(lastAt).length ? new Date(Math.min.apply(null, Object.keys(lastAt).map(function (k) { return lastAt[k]; })) - 86400000 * 2) : null;
-    if (since) {
-      var sd = dayOf(since.getTime());
-      var er = await Promise.all([
-        sb.from('purchase_bills').select('id,bill_date,created_at').gte('bill_date', sd),
-        sb.from('wastage').select('item_id,qty,wasted_on,created_at').gte('wasted_on', sd)
-      ]);
-      var bills = {};
-      (er[0].data || []).forEach(function (b) { bills[b.id] = entryPos(b.bill_date, b.created_at); });
-      var ids = Object.keys(bills);
-      var pl = ids.length ? await sb.from('purchase_lines').select('item_id,bill_id,total_pieces').in('bill_id', ids) : { data: [] };
-      (pl.data || []).forEach(function (l) {
-        if (lastAt[l.item_id] != null && bills[l.bill_id] > lastAt[l.item_id]) added[l.item_id] = (added[l.item_id] || 0) + Number(l.total_pieces);
-      });
-      (er[1].data || []).forEach(function (w) {
-        if (lastAt[w.item_id] != null && entryPos(w.wasted_on, w.created_at) > lastAt[w.item_id]) lost[w.item_id] = (lost[w.item_id] || 0) + Number(w.qty);
-      });
-      Object.keys(lastQty).forEach(function (k) { expected[k] = lastQty[k] + (added[k] || 0) - (lost[k] || 0); });
-    }
+    var lastQty = {}, added = {}, lost = {}, expected = {};
+    items.forEach(function (it) {
+      var id = it.item_id;
+      if (it.last_count_qty != null) lastQty[id] = Number(it.last_count_qty);
+      if (Number(it.purchased_since)) added[id] = Number(it.purchased_since);
+      if (Number(it.wasted_since)) lost[id] = Number(it.wasted_since);
+      if (it.stock_qty != null && (it.last_count_qty != null || added[id])) expected[id] = Math.max(0, Number(it.stock_qty));
+    });
     var vals = readDraft(date);
     var full = true;
     var inputs = {};
@@ -128,10 +97,10 @@
       var row = h('div', { class: 'stk-row' + (isFinite(num(inp.value)) ? ' done' : ''), 'data-name': it.name.toLowerCase() },
         h('div', { class: 'stk-info' },
           h('div', { class: 'stk-name' }, it.name),
-          h('div', { class: 'stk-meta' }, lastQty[id] != null ? 'Last: ' + fmt(lastQty[id]) + ' \u00b7 ' + ago(it.days_since_count) : 'Not counted before',
+          h('div', { class: 'stk-meta' }, lastQty[id] != null ? 'Last: ' + fmt(lastQty[id]) + ' \u00b7 ' + ago(it.days_since_count) : (added[id] ? 'New item' : 'Not counted before'),
             added[id] ? h('span', { class: 'stk-add' }, '+' + fmt(added[id]) + ' bought') : null,
             lost[id] ? h('span', { class: 'stk-add lost' }, '\u2212' + fmt(lost[id]) + ' wasted') : null,
-            expected[id] != null && (added[id] || lost[id]) ? h('strong', { class: 'stk-exp' }, 'Should be ' + fmt(expected[id])) : null,
+            expected[id] != null && (added[id] || lost[id] || lastQty[id] == null) ? h('strong', { class: 'stk-exp' }, 'Should be ' + fmt(expected[id])) : null,
             it.count_overdue ? h('span', { class: 'badge' }, 'Due') : null)),
         h('div', { class: 'stk-ctl' }, dec, inp, inc));
       return row;

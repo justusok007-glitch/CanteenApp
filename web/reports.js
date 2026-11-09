@@ -37,20 +37,43 @@
     function failure(e) { put(h('div', { class: 'error', role: 'alert' }, 'Could not load: ' + e.message)); }
     function note(t) { return h('p', { class: 'dash-note', style: 'margin-top:14px' }, icon('info'), h('span', {}, t)); }
 
+    // Sales of each count-to-count period spread evenly over the business days it covers (same rule as the database).
+    function byDay(periods, o) {
+      var acc = {}, DAY = 86400000;
+      function d(s) { var p = s.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
+      function back(t) { return new Date(t).toISOString().slice(0, 10); }
+      periods.forEach(function (p) {
+        var lo = p.to_on === p.from_on ? d(p.to_on) : d(p.from_on) + (1 - o) * DAY;
+        var hi = d(p.to_on) - (p.to_on === p.from_on ? 0 : o * DAY);
+        var n = Math.round((hi - lo) / DAY) + 1;
+        if (!(n > 0)) return;
+        for (var t = lo; t <= hi; t += DAY) {
+          var k = back(t);
+          if (k < m0 || k > m1) continue;
+          var a = acc[k] = acc[k] || { day: k, sales_value: 0, gross_profit: null };
+          a.sales_value += Number(p.sales_value || 0) / n;
+          if (p.gross_profit != null) a.gross_profit = (a.gross_profit || 0) + Number(p.gross_profit) / n;
+        }
+      });
+      return Object.keys(acc).sort().map(function (k) { return acc[k]; });
+    }
+
     // ---------------------------------------------------------------- month
     if (tab === 'month') {
       Promise.all([
-        sb.from('v_sales_by_day').select('day,sales_value,gross_profit').gte('day', m0).lte('day', m1).order('day'),
+        // only periods that end in this month or later; the old daily view worked through all history every time
+        sb.from('v_item_periods').select('from_on,to_on,sales_value,gross_profit').gte('to_on', m0),
         sb.from('cash_handovers').select('salary_kept').gte('handed_on', m0).lte('handed_on', m1),
         sb.from('expenses').select('amount').gte('spent_on', m0).lte('spent_on', m1),
         sb.from('wastage').select('qty,item_id').gte('wasted_on', m0).lte('wasted_on', m1),
-        sb.from('item_costs').select('item_id,avg_cost')
+        sb.from('item_costs').select('item_id,avg_cost'),
+        sb.from('canteens').select('count_timing').limit(1)
       ]).then(function (r) {
         var bad = r.filter(function (x) { return x.error; })[0];
         if (bad) return failure(bad.error);
-        var days = r[0].data || [];
+        var days = byDay(r[0].data || [], r[5].data && r[5].data[0] && r[5].data[0].count_timing === 'start_of_day' ? 1 : 0);
         var sales = sum(days, function (d) { return d.sales_value; });
-        var seeCost = days.length ? days[0].gross_profit != null : r[4].data && r[4].data.length > 0;
+        var seeCost = r[4].data && r[4].data.length > 0;
         var gross = sum(days, function (d) { return d.gross_profit; });
         var salary = sum(r[1].data || [], function (x) { return x.salary_kept; });
         var exp = sum(r[2].data || [], function (x) { return x.amount; });
@@ -102,39 +125,14 @@
 
 
     // ---------------------------------------------------------------- stock value
-    // Stock on the shelf now = last count + purchases since - wastage since (same rule as the count screen).
+    // Stock on the shelf now = last count + purchases since - wastage since, worked out by the database.
+    // Items bought but never counted are included (they start from 0 before their first purchase).
     if (tab === 'stock') {
       (async function () {
-        var r = await Promise.all([
-          sb.from('v_item_status').select('item_id,name,sell_price,avg_cost,last_counted_on'),
-          sb.from('stock_counts').select('id,counted_on,created_at').order('counted_on', { ascending: false }).order('created_at', { ascending: false }).limit(40)
-        ]);
-        if (r[0].error) return failure(r[0].error);
-        if (r[1].error) return failure(r[1].error);
-        var st = r[0].data || [], counts = r[1].data || [];
-        function dayOf(ts) { return iso(new Date(ts)); }
-        function countPos(c) { return dayOf(c.created_at) === c.counted_on ? new Date(c.created_at).getTime() : new Date(c.counted_on + 'T23:59:59').getTime(); }
-        function entryPos(d, created) { return dayOf(created) === d ? new Date(created).getTime() : new Date(d + 'T00:00:00').getTime(); }
-        var lastQty = {}, lastAt = {};
-        if (counts.length) {
-          var lr = await sb.from('stock_count_lines').select('count_id,item_id,qty').in('count_id', counts.map(function (c) { return c.id; }));
-          if (lr.error) return failure(lr.error);
-          var by = {}; (lr.data || []).forEach(function (l) { (by[l.count_id] = by[l.count_id] || {})[l.item_id] = Number(l.qty); });
-          counts.forEach(function (c) { Object.keys(by[c.id] || {}).forEach(function (k) { if (!(k in lastQty)) { lastQty[k] = by[c.id][k]; lastAt[k] = countPos(c); } }); });
-        }
-        var qty = {}, keys = Object.keys(lastAt);
-        keys.forEach(function (k) { qty[k] = lastQty[k]; });
-        if (keys.length) {
-          var sd = iso(new Date(Math.min.apply(null, keys.map(function (k) { return lastAt[k]; })) - 86400000 * 2));
-          var er = await Promise.all([
-            sb.from('purchase_bills').select('id,bill_date,created_at').gte('bill_date', sd),
-            sb.from('wastage').select('item_id,qty,wasted_on,created_at').gte('wasted_on', sd)]);
-          var bills = {}; (er[0].data || []).forEach(function (b) { bills[b.id] = entryPos(b.bill_date, b.created_at); });
-          var ids = Object.keys(bills);
-          var pl = ids.length ? await sb.from('purchase_lines').select('item_id,bill_id,total_pieces').in('bill_id', ids) : { data: [] };
-          (pl.data || []).forEach(function (l) { if (lastAt[l.item_id] != null && bills[l.bill_id] > lastAt[l.item_id]) qty[l.item_id] += Number(l.total_pieces); });
-          (er[1].data || []).forEach(function (w) { if (lastAt[w.item_id] != null && entryPos(w.wasted_on, w.created_at) > lastAt[w.item_id]) qty[w.item_id] -= Number(w.qty); });
-        }
+        var r = await sb.from('v_item_status').select('item_id,name,sell_price,avg_cost,last_counted_on,last_count_qty,purchased_since,stock_qty');
+        if (r.error) return failure(/column/i.test(r.error.message || '') ? { message: 'Run the database update 006_new_items_stock_speed.sql first.' } : r.error);
+        var st = r.data || [], qty = {};
+        st.forEach(function (x) { if (x.last_count_qty != null || Number(x.purchased_since) > 0) qty[x.item_id] = Number(x.stock_qty); });
         var rows = [], uncounted = [], noPrice = 0, noCost = 0, seeCost = false;
         st.forEach(function (x) {
           if (qty[x.item_id] == null) { uncounted.push(x.name); return; }
@@ -153,7 +151,7 @@
             line('Worth at selling price', rs(tSell)),
             seeCost ? line('Worth at cost price', rs(tCost)) : null,
             seeCost ? line('Profit if all sold', rs(tSell - tCost), 'pos') : null,
-            h('p', { class: 'hint' }, 'Last count plus purchases and minus wastage since. It is only as fresh as your last count.')),
+            h('p', { class: 'hint' }, 'Last count plus purchases and minus wastage since (new items: what was bought). It is only as fresh as your last count.')),
           h('section', { class: 'sec' }, h('h2', {}, 'By item'),
             rows.length ? rows.map(function (x) {
               return h('div', { class: 'item-row' },
@@ -161,9 +159,9 @@
                 h('span', { class: 'item-main', style: 'text-align:right' },
                   h('b', { class: 'num' }, x.sell != null ? rs(x.sell) : 'no price'),
                   seeCost ? h('span', { class: 'muted' }, 'cost ' + (x.cost != null ? rs(x.cost) : 'unknown')) : null));
-            }) : h('p', { class: 'muted' }, 'Count your stock first. Values appear after the first stock count.'),
+            }) : h('p', { class: 'muted' }, 'No stock yet. Enter a purchase or do a stock count.'),
             (noPrice || noCost) ? h('p', { class: 'hint' }, [noPrice ? noPrice + ' without a selling price' : '', noCost ? noCost + ' without a cost' : ''].filter(Boolean).join(', ') + ' are left out of those totals.') : null,
-            uncounted.length ? h('p', { class: 'hint' }, 'Not counted yet: ' + uncounted.join(', ') + '.') : null)));
+            uncounted.length ? h('p', { class: 'hint' }, 'No stock recorded yet: ' + uncounted.join(', ') + '.') : null)));
       })().catch(failure);
     }
 

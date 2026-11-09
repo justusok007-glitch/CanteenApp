@@ -145,7 +145,9 @@
       if (isRest) {
         setOffline(false);
         if (method === 'GET' && res.ok && window.caches) {
-          try { var c = await caches.open(DATA_CACHE); await c.put(cacheKey(input, init), res.clone()); } catch (e) { /* cache is optional */ }
+          // saved in the background: the screen gets the answer without waiting for the phone's storage
+          var copy = res.clone(), k = cacheKey(input, init);
+          caches.open(DATA_CACHE).then(function (c) { return c.put(k, copy); }).catch(function () { /* cache is optional */ });
         }
       }
       return res;
@@ -167,7 +169,7 @@
   var sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { global: { fetch: dataFetch } });
   window.Canteen = {
     sb: sb, h: h, show: show, toast: toast, icon: icon, header: header, screens: {},
-    goHome: function () { return loadHome(); },
+    goHome: function () { return goHome(); },
     openSettings: function () { return renderAccount(); }
   };
 
@@ -179,7 +181,7 @@
   // ---------------------------------------------------------------- bottom navigation
   function renderNav(active) {
     if (!state.me) { nav.hidden = true; nav.replaceChildren(); return; }
-    var tabs = [{ key: 'home', label: 'Home', icon: 'home', go: loadHome }];
+    var tabs = [{ key: 'home', label: 'Home', icon: 'home', go: goHome }];
     FEATURE_ORDER.forEach(function (f) {
       var p = state.perms.filter(function (x) { return x.feature === f; })[0];
       if (p && (p.can_view || p.can_add) && window.Canteen.screens[f] && tabs.length < 4) {
@@ -238,11 +240,25 @@
         err.removeAttribute('hidden');
         return;
       }
-      await sb.rpc('touch_login');
+      sb.rpc('touch_login').then(null, function () { /* only for "last login"; never hold up the app */ });
       loadHome();
     });
     show(form, 'home', { bare: true });
     user.focus();
+  }
+
+  // Back to Home from any screen: draw it straight away, then refresh role and permissions in the background
+  // (they rarely change, and waiting for them made every "Back" slow on a weak signal).
+  function goHome() {
+    if (!state.me) return loadHome();
+    renderHome();
+    Promise.all([sb.from('v_me').select('*').maybeSingle(), sb.from('v_my_permissions').select('*')]).then(function (r) {
+      if (r[0].error || r[1].error) return;
+      if (!r[0].data) { loadHome(); return; }   // disabled or logged out elsewhere: the full check handles it
+      var changed = JSON.stringify(r[0].data) !== JSON.stringify(state.me) || JSON.stringify(r[1].data) !== JSON.stringify(state.perms);
+      state.me = r[0].data; state.perms = r[1].data || [];
+      if (changed && lastTitle === state.me.full_name) renderHome();
+    }, function () { /* offline: keep what we have */ });
   }
 
   async function loadHome() {
